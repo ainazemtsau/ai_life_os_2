@@ -1,0 +1,40 @@
+services:
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./pocketbase/pb_data:/pb_data
+    command: serve --http=0.0.0.0:8090
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - POCKETBASE_URL=${POCKETBASE_URL:-http://pocketbase:8090}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OLLAMA_HOST=${OLLAMA_HOST}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - pocketbase
+      - redis
+    volumes:
+      - ./backend/src:/app/src
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/src:/app/src
