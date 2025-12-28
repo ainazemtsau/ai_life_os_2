@@ -1,5 +1,9 @@
 # AI Workspace
 
+## ЗАПРЕЩЕНО
+
+**МОДЕЛЬ LLM: gpt-5-mini. НИКОГДА НЕ МЕНЯТЬ. НЕ ПРЕДЛАГАТЬ ДРУГИЕ МОДЕЛИ.**
+
 ## Mandatory Rules
 
 ### Before working on any module:
@@ -40,7 +44,16 @@ docker-compose logs -f <service>
 - Pocketbase admin: http://localhost:8090/_/
 - Backend health: http://localhost:8000/health
 - Frontend: http://localhost:3000
+- AI chat test: POST http://localhost:8000/test/ai/chat
+
+### Setup Pocketbase Admin (required for AI)
+1. Open http://localhost:8090/_/
+2. Create admin account with email/password
+3. Add credentials to .env:
+   - POCKETBASE_ADMIN_EMAIL=your-email
+   - POCKETBASE_ADMIN_PASSWORD=your-password
+4. Restart backend: `docker-compose restart backend`
 
 ## Project Status
 
-Current Stage: 0 - Infrastructure
+Current Stage: 4 - AI Agent
