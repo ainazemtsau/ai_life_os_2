@@ -93,6 +93,14 @@ class PocketbaseService:
                 if response.status_code >= 400:
                     error_data = response.json() if response.text else {}
                     error_msg = error_data.get("message", response.text or "Unknown error")
+                    # Include additional error details if available
+                    error_details = error_data.get("data", {})
+                    if error_details:
+                        error_msg = f"{error_msg} - Details: {error_details}"
+                    logger.error(
+                        "Pocketbase error: %s %s -> %d: %s",
+                        method, path, response.status_code, error_msg
+                    )
                     raise PocketbaseError(error_msg, response.status_code)
 
                 if response.text:

@@ -14,6 +14,7 @@ from pydantic_ai import Agent
 
 from src.config import settings
 from src.ai.context import AgentDeps
+from src.models.workflow_signal import WorkflowSignal, AgentOutput, WorkflowAction
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class AgentResponse:
     content: str
     agent_name: str
     metadata: dict = field(default_factory=dict)
+    workflow_signal: Optional[WorkflowSignal] = None
 
 
 class AgentService:
@@ -232,6 +234,118 @@ class AgentService:
             return AgentResponse(
                 content=f"Error: {str(e)}",
                 agent_name=agent_name,
+                metadata={"error": str(e)},
+            )
+
+    def _create_workflow_agent(self, config: AgentConfig) -> Agent:
+        """
+        Create a PydanticAI agent with structured output for workflow signals.
+
+        Unlike regular agents, workflow agents return AgentOutput which includes
+        both the content and an optional workflow_signal.
+        """
+        model = self._resolve_model(config.model)
+        logger.info(
+            "Creating workflow agent '%s' with model: %s",
+            config.name,
+            model,
+        )
+
+        # Create agent with structured output
+        agent: Agent[AgentDeps, AgentOutput] = Agent(
+            model=model,
+            deps_type=AgentDeps,
+            output_type=AgentOutput,
+        )
+
+        # Add dynamic system prompt that includes workflow context
+        @agent.system_prompt
+        async def workflow_system_prompt(ctx) -> str:
+            deps: AgentDeps = ctx.deps
+            base_prompt = config.system_prompt
+
+            # Get workflow context instructions
+            workflow_prompt = deps.get_workflow_prompt_context()
+
+            # Get data context
+            collections_summary = deps.get_collections_summary()
+            memories_summary = deps.get_memories_summary()
+
+            return f"""{base_prompt}
+
+{workflow_prompt}
+
+## Available Data
+
+{collections_summary}
+
+{memories_summary}
+"""
+
+        # Register tools
+        for tool_name in config.tools:
+            if tool_name in self._tools:
+                agent.tool(self._tools[tool_name])
+            else:
+                logger.warning(
+                    "Tool '%s' not found for workflow agent '%s'",
+                    tool_name,
+                    config.name,
+                )
+
+        return agent
+
+    async def run_workflow_agent(
+        self,
+        agent_name: str,
+        message: str,
+        deps: AgentDeps,
+    ) -> Optional[AgentResponse]:
+        """
+        Run an agent with workflow signal extraction.
+
+        This method creates a workflow-aware agent that returns structured
+        output including content and workflow_signal.
+
+        Args:
+            agent_name: Name of the agent to run
+            message: User message
+            deps: Agent dependencies (must include workflow_context)
+
+        Returns:
+            AgentResponse with workflow_signal or None if agent not found
+        """
+        config = self._configs.get(agent_name)
+        if not config:
+            logger.error("Agent '%s' not found", agent_name)
+            return None
+
+        # Create workflow agent (not cached because system prompt is dynamic)
+        agent = self._create_workflow_agent(config)
+
+        try:
+            result = await agent.run(message, deps=deps)
+            output: AgentOutput = result.output
+
+            # Extract workflow signal, default to STAY if not provided
+            workflow_signal = output.workflow_signal
+            if workflow_signal is None:
+                workflow_signal = WorkflowSignal(action=WorkflowAction.STAY)
+
+            return AgentResponse(
+                content=output.content,
+                agent_name=agent_name,
+                workflow_signal=workflow_signal,
+                metadata={},
+            )
+
+        except Exception as e:
+            logger.exception("Error running workflow agent '%s': %s", agent_name, e)
+            # Return error with STAY signal so we don't break the workflow
+            return AgentResponse(
+                content="I encountered an issue. Let's continue our conversation.",
+                agent_name=agent_name,
+                workflow_signal=WorkflowSignal(action=WorkflowAction.STAY),
                 metadata={"error": str(e)},
             )
 

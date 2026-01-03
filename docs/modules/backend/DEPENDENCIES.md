@@ -50,9 +50,9 @@
 | OLLAMA_HOST | No | - | Ollama host URL |
 | OLLAMA_MODEL | No | - | Ollama model name |
 | LLM_PROVIDER | No | openai | LLM provider for AI Agent (openai/anthropic/ollama) |
-| LLM_MODEL | No | gpt-4o | LLM model for AI Agent |
+| LLM_MODEL | No | gpt-5-mini | LLM model for AI Agent |
 | MEM0_LLM_PROVIDER | No | openai | LLM provider for Mem0 (openai/anthropic/ollama) |
-| MEM0_LLM_MODEL | No | gpt-4o-mini | LLM model for Mem0 memory extraction |
+| MEM0_LLM_MODEL | No | gpt-5-mini | LLM model for Mem0 memory extraction |
 | MEM0_EMBEDDER_PROVIDER | No | openai | Embedder provider for Mem0 |
 | MEM0_EMBEDDER_MODEL | No | text-embedding-3-small | Embedding model for Mem0 |
 | LOG_LEVEL | No | INFO | Logging level |

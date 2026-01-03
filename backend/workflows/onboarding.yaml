@@ -7,24 +7,30 @@ steps:
     agent: greeter
     is_required: true
     completion_criteria:
-      type: agent_decision
-      description: Agent decides user is ready to proceed
+      type: agent_signal
+      description: Agent signals user is ready to proceed
     next_step: discovery
 
   - name: discovery
     agent: discovery
     is_required: true
     completion_criteria:
-      type: agent_decision
-      description: Agent has gathered enough information about user
+      type: agent_signal_memory
+      description: Agent signals AND minimum facts collected about priorities
+      params:
+        min_facts: 3
+        category: priorities
     next_step: brain_dump
 
   - name: brain_dump
     agent: inbox_collector
     is_required: true
     completion_criteria:
-      type: agent_decision
-      description: User has completed brain dump or opted to skip
+      type: agent_signal_widget
+      description: Agent signals AND inbox has items
+      params:
+        min_items: 1
+        collection: inbox_items
     next_step: setup_complete
 
   - name: setup_complete
@@ -32,5 +38,5 @@ steps:
     is_required: true
     completion_criteria:
       type: auto
-      description: Workflow completed
+      description: Workflow completed automatically
     next_step: null

@@ -8,9 +8,11 @@
 // ============================================
 
 export interface OutgoingMessage {
-  type: "message";
+  type: "message.send" | "message";
   content: string;
   user_id?: string;
+  /** Request ID for tracking stream lifecycle */
+  request_id?: string;
 }
 
 // ============================================
@@ -24,6 +26,16 @@ export interface ThinkingMessage {
 export interface AIResponseMessage {
   type: "ai_response";
   content: string;
+}
+
+export interface MessageNewMessage {
+  type: "message.new";
+  message: {
+    id: string;
+    role: string;
+    content: string;
+    agent_name?: string;
+  };
 }
 
 export interface ErrorMessage {
@@ -57,6 +69,7 @@ export interface EntityDeletedMessage {
 export type IncomingMessage =
   | ThinkingMessage
   | AIResponseMessage
+  | MessageNewMessage
   | ErrorMessage
   | CollectionCreatedMessage
   | EntityCreatedMessage
@@ -73,6 +86,10 @@ export function isThinkingMessage(msg: IncomingMessage): msg is ThinkingMessage 
 
 export function isAIResponseMessage(msg: IncomingMessage): msg is AIResponseMessage {
   return msg.type === "ai_response";
+}
+
+export function isMessageNewMessage(msg: IncomingMessage): msg is MessageNewMessage {
+  return msg.type === "message.new";
 }
 
 export function isErrorMessage(msg: IncomingMessage): msg is ErrorMessage {

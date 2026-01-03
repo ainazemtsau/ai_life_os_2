@@ -13,8 +13,8 @@ import pytest
 import sys
 from pathlib import Path
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add backend to path for imports (so 'from src.xxx' works)
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 class TestWorkflowService:

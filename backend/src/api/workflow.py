@@ -1,13 +1,17 @@
 """
 Workflow API endpoints.
+
+Uses Temporal queries to get workflow state.
 """
 import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
+from temporalio.service import RPCError
 
-from src.services.workflow import workflow_service, WorkflowService
+from src.temporal.client import get_temporal_client
+from src.temporal.workflows.onboarding import OnboardingWorkflow, ONBOARDING_STEPS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/workflow", tags=["workflow"])
@@ -57,6 +61,27 @@ class TransitionRequest(BaseModel):
     data: Optional[dict] = None
 
 
+class WorkflowSignalRequest(BaseModel):
+    """Request to send workflow signal (for testing)."""
+
+    action: str  # complete_step, stay, need_input
+    data: Optional[dict] = None
+    reason: Optional[str] = None
+
+
+class WorkflowProgressResponse(BaseModel):
+    """Workflow progress information."""
+
+    workflow_id: str
+    instance_id: str
+    current_step: str
+    current_step_index: int
+    total_steps: int
+    progress_percent: int
+    steps_completed: list[str]
+    status: str
+
+
 @router.get("/current", response_model=CurrentWorkflowResponse)
 async def get_current_workflow(
     user_id: str = Query(..., description="User identifier"),
@@ -64,28 +89,46 @@ async def get_current_workflow(
     """
     Get current active workflow for user.
 
-    Returns the active workflow instance and current step info.
+    Returns the active workflow instance and current step info from Temporal.
     """
-    instance = await workflow_service.get_active_workflow(user_id)
+    try:
+        client = await get_temporal_client()
+        workflow_id = f"onboarding-{user_id}"
 
-    if not instance:
+        # Try to get workflow state from Temporal
+        handle = client.get_workflow_handle(workflow_id)
+        state = await handle.query(OnboardingWorkflow.get_state)
+
+        if not state:
+            return CurrentWorkflowResponse(instance=None, current_step=None)
+
+        # Build instance response
+        current_step = state.get("current_step", "")
+        step_config = ONBOARDING_STEPS.get(current_step, {})
+
+        return CurrentWorkflowResponse(
+            instance=WorkflowInstanceResponse(
+                id=state.get("instance_id", ""),
+                user_id=state.get("user_id", user_id),
+                workflow_name=state.get("workflow_name", "onboarding"),
+                current_step=current_step,
+                status=state.get("status", "active"),
+                context=state.get("context", {}),
+            ),
+            current_step=WorkflowStepResponse(
+                name=current_step,
+                agent=step_config.get("agent"),
+                is_required=step_config.get("is_required", True),
+                next_step=step_config.get("next"),
+            ) if step_config else None,
+        )
+
+    except RPCError:
+        # Workflow doesn't exist
         return CurrentWorkflowResponse(instance=None, current_step=None)
-
-    step_info = await workflow_service.get_current_step(instance.id)
-
-    return CurrentWorkflowResponse(
-        instance=WorkflowInstanceResponse(
-            id=instance.id,
-            user_id=instance.user_id,
-            workflow_name=instance.workflow_name,
-            current_step=instance.current_step,
-            status=instance.status,
-            context=instance.context,
-            started_at=instance.started_at,
-            completed_at=instance.completed_at,
-        ),
-        current_step=WorkflowStepResponse(**step_info) if step_info else None,
-    )
+    except Exception as e:
+        logger.error("Error getting workflow state: %s", e)
+        return CurrentWorkflowResponse(instance=None, current_step=None)
 
 
 @router.post("/start", response_model=WorkflowInstanceResponse)
@@ -93,88 +136,104 @@ async def start_workflow(
     user_id: str = Query(..., description="User identifier"),
     request: StartWorkflowRequest = ...,
 ) -> WorkflowInstanceResponse:
-    """Start a new workflow for user."""
-    # Check if workflow exists
-    config = WorkflowService.get_workflow_config(request.workflow_name)
-    if not config:
+    """Start a new workflow for user via Temporal."""
+    from src.temporal.worker import TASK_QUEUE
+
+    # Only onboarding workflow is supported for now
+    if request.workflow_name != "onboarding":
         raise HTTPException(
             status_code=404,
             detail=f"Workflow '{request.workflow_name}' not found",
         )
 
-    # Check if user already has active workflow
-    existing = await workflow_service.get_active_workflow(user_id)
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail="User already has an active workflow",
+    try:
+        client = await get_temporal_client()
+        workflow_id = f"onboarding-{user_id}"
+
+        # Check if user already has active workflow
+        try:
+            handle = client.get_workflow_handle(workflow_id)
+            state = await handle.query(OnboardingWorkflow.get_state)
+            if state and state.get("status") == "active":
+                raise HTTPException(
+                    status_code=400,
+                    detail="User already has an active workflow",
+                )
+        except RPCError:
+            # Workflow doesn't exist, continue to create
+            pass
+
+        # Start new workflow
+        handle = await client.start_workflow(
+            OnboardingWorkflow.run,
+            args=[user_id, request.initial_context or {}],
+            id=workflow_id,
+            task_queue=TASK_QUEUE,
         )
 
-    instance = await workflow_service.start_workflow(
-        user_id,
-        request.workflow_name,
-        request.initial_context,
-    )
+        # Query initial state
+        state = await handle.query(OnboardingWorkflow.get_state)
 
-    if not instance:
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to start workflow",
+        return WorkflowInstanceResponse(
+            id=state.get("instance_id", workflow_id),
+            user_id=user_id,
+            workflow_name="onboarding",
+            current_step=state.get("current_step", "greeting"),
+            status="active",
+            context=state.get("context", {}),
         )
 
-    return WorkflowInstanceResponse(
-        id=instance.id,
-        user_id=instance.user_id,
-        workflow_name=instance.workflow_name,
-        current_step=instance.current_step,
-        status=instance.status,
-        context=instance.context,
-        started_at=instance.started_at,
-    )
-
-
-@router.post("/{instance_id}/transition")
-async def transition_workflow(
-    instance_id: str,
-    request: TransitionRequest,
-) -> dict:
-    """Transition workflow to next step."""
-    can_transition = await workflow_service.can_transition(
-        instance_id,
-        request.to_step,
-    )
-
-    if not can_transition:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot transition to step '{request.to_step}'",
-        )
-
-    success = await workflow_service.transition(
-        instance_id,
-        request.to_step,
-        request.data,
-    )
-
-    if not success:
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to start workflow: %s", e)
         raise HTTPException(
             status_code=500,
-            detail="Failed to transition workflow",
+            detail=f"Failed to start workflow: {str(e)}",
         )
-
-    return {"success": True, "new_step": request.to_step}
 
 
 @router.get("/list")
 async def list_workflows() -> dict:
     """List available workflow types."""
-    workflows = WorkflowService.list_workflows()
+    # Currently only onboarding is supported
     return {
         "workflows": [
             {
-                "name": name,
-                "config": WorkflowService.get_workflow_config(name),
+                "name": "onboarding",
+                "steps": list(ONBOARDING_STEPS.keys()),
             }
-            for name in workflows
         ]
     }
+
+
+@router.get("/{user_id}/progress", response_model=WorkflowProgressResponse)
+async def get_workflow_progress(user_id: str) -> WorkflowProgressResponse:
+    """
+    Get workflow progress information from Temporal.
+
+    Returns current step, completed steps, and progress percentage.
+    """
+    try:
+        client = await get_temporal_client()
+        workflow_id = f"onboarding-{user_id}"
+
+        handle = client.get_workflow_handle(workflow_id)
+        progress = await handle.query(OnboardingWorkflow.get_progress)
+
+        return WorkflowProgressResponse(
+            workflow_id="onboarding",
+            instance_id=workflow_id,
+            current_step=progress.get("current_step", ""),
+            current_step_index=progress.get("completed", 0),
+            total_steps=progress.get("total", len(ONBOARDING_STEPS)),
+            progress_percent=progress.get("percentage", 0),
+            steps_completed=progress.get("steps_completed", []),
+            status="active" if progress.get("percentage", 0) < 100 else "completed",
+        )
+
+    except RPCError:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    except Exception as e:
+        logger.error("Error getting workflow progress: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))

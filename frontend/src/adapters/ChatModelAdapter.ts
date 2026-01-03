@@ -1,88 +1,168 @@
 /**
- * Chat Model Adapter for assistant-ui.
- * 
- * Converts WebSocket messages to assistant-ui format.
- * Interface Segregation: implements only ChatModelAdapter interface.
+ * WebSocket Chat Model Adapter.
+ *
+ * Bridges WebSocket streaming to assistant-ui ChatModelAdapter interface.
+ * Uses async generators for real-time UI updates.
+ *
+ * Interface Segregation: Implements only ChatModelAdapter interface.
  */
 
-import type { ChatModelAdapter, ChatModelRunOptions, ChatModelRunResult } from "@assistant-ui/react";
+import type {
+  ChatModelAdapter,
+  ChatModelRunOptions,
+  ChatModelRunResult,
+} from "@assistant-ui/react";
 import { webSocketService } from "@/services/WebSocketService";
-import type { IncomingMessage, OutgoingMessage } from "@/types/chat";
+import { createStreamIterator } from "@/services/streaming";
+import {
+  StreamEventGuards,
+  type StreamEvent,
+  type RequestId,
+} from "@/types/streaming";
 
+/**
+ * Configuration for the chat adapter.
+ */
+interface ChatAdapterConfig {
+  /** Generate unique request IDs */
+  readonly generateRequestId: () => RequestId;
+}
+
+/**
+ * Default configuration using crypto.randomUUID.
+ */
+const DEFAULT_CONFIG: ChatAdapterConfig = {
+  generateRequestId: () => crypto.randomUUID(),
+};
+
+/**
+ * Adapter that connects WebSocket streaming to assistant-ui.
+ *
+ * Features:
+ * - Real-time streaming (shows text as it's generated)
+ * - Abort signal support (cancel ongoing requests)
+ * - Type-safe event handling
+ *
+ * @example
+ * ```typescript
+ * const adapter = new WebSocketChatAdapter();
+ * const runtime = useLocalRuntime(adapter);
+ * ```
+ */
 export class WebSocketChatAdapter implements ChatModelAdapter {
+  private readonly config: ChatAdapterConfig;
+
+  constructor(config: Partial<ChatAdapterConfig> = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /**
+   * Run the chat model with streaming response.
+   *
+   * This is an async generator that yields partial results
+   * as they arrive from the backend.
+   */
   async *run(options: ChatModelRunOptions): AsyncGenerator<ChatModelRunResult> {
-    const { messages, abortSignal } = options;
+    console.log("[ChatAdapter] run() called with options:", options);
 
-    // Get the last user message
+    const userMessage = this.extractUserMessage(options);
+    if (!userMessage) {
+      console.warn("[ChatAdapter] No user message extracted");
+      return;
+    }
+
+    const requestId = this.config.generateRequestId();
+    console.log("[ChatAdapter] Generated requestId:", requestId);
+    console.log("[ChatAdapter] Sending message:", userMessage);
+
+    this.sendMessage(requestId, userMessage);
+
+    console.log("[ChatAdapter] Waiting for stream events...");
+    yield* this.processStreamEvents(requestId, options.abortSignal);
+  }
+
+  /**
+   * Extract text content from the last user message.
+   */
+  private extractUserMessage(options: ChatModelRunOptions): string | null {
+    const { messages } = options;
     const lastMessage = messages[messages.length - 1];
+
     if (!lastMessage || lastMessage.role !== "user") {
-      return;
+      return null;
     }
 
-    // Extract text content from user message
-    const textContent = lastMessage.content.find((part) => part.type === "text");
-    if (!textContent || textContent.type !== "text") {
-      return;
-    }
+    const textContent = lastMessage.content.find(
+      (part) => part.type === "text",
+    );
 
-    const userText = textContent.text;
+    return textContent?.type === "text" ? textContent.text : null;
+  }
 
-    // Create promise-based message handler
-    const responsePromise = new Promise<string>((resolve, reject) => {
-      let isThinking = false;
-
-      const handleMessage = (msg: IncomingMessage) => {
-        if (msg.type === "thinking") {
-          isThinking = true;
-        } else if (msg.type === "ai_response") {
-          unsubscribe();
-          resolve(msg.content);
-        } else if (msg.type === "error") {
-          unsubscribe();
-          reject(new Error(msg.message));
-        }
-      };
-
-      const unsubscribe = webSocketService.onMessage(handleMessage);
-
-      // Handle abort
-      if (abortSignal) {
-        abortSignal.addEventListener("abort", () => {
-          unsubscribe();
-          reject(new Error("Request aborted"));
-        });
-      }
-
-      // Send message to backend
-      const outgoing: OutgoingMessage = {
-        type: "message",
-        content: userText,
-      };
-      webSocketService.send(outgoing);
+  /**
+   * Send message to backend via WebSocket.
+   */
+  private sendMessage(requestId: RequestId, content: string): void {
+    webSocketService.send({
+      type: "message.send",
+      content,
+      request_id: requestId,
     });
+  }
 
-    try {
-      const response = await responsePromise;
-      
-      yield {
-        content: [
-          {
-            type: "text" as const,
-            text: response,
-          },
-        ],
-      };
-    } catch (error) {
-      if (error instanceof Error && error.message !== "Request aborted") {
-        yield {
-          content: [
-            {
-              type: "text" as const,
-              text: "Error: " + error.message,
-            },
-          ],
-        };
+  /**
+   * Process incoming stream events and yield results.
+   */
+  private async *processStreamEvents(
+    requestId: RequestId,
+    abortSignal?: AbortSignal,
+  ): AsyncGenerator<ChatModelRunResult> {
+    const streamIterator = createStreamIterator(
+      webSocketService.streamObserver,
+      requestId,
+      abortSignal,
+    );
+
+    for await (const event of streamIterator) {
+      const result = this.eventToResult(event);
+      if (result) {
+        yield result;
+      }
+
+      if (StreamEventGuards.isTerminal(event)) {
+        return;
       }
     }
+  }
+
+  /**
+   * Convert stream event to ChatModelRunResult.
+   *
+   * Returns null for events that don't produce visible output.
+   */
+  private eventToResult(event: StreamEvent): ChatModelRunResult | null {
+    if (StreamEventGuards.isChunk(event)) {
+      return this.createTextResult(event.accumulated);
+    }
+
+    if (StreamEventGuards.isEnd(event)) {
+      return this.createTextResult(event.message.content);
+    }
+
+    if (StreamEventGuards.isError(event)) {
+      return this.createTextResult(`Error: ${event.error}`);
+    }
+
+    // stream.start doesn't produce visible output
+    return null;
+  }
+
+  /**
+   * Create a text result in assistant-ui format.
+   */
+  private createTextResult(text: string): ChatModelRunResult {
+    return {
+      content: [{ type: "text" as const, text }],
+    };
   }
 }

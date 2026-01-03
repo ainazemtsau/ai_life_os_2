@@ -33,7 +33,17 @@
       "Bash(npx assistant-ui@latest init)",
       "Bash(npx assistant-ui@latest add thread -y)",
       "Bash(npx tsc:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2xsZWN0aW9uSWQiOiJwYmNfMzE0MjYzNTgyMyIsImV4cCI6MTc2NzQ5NjgwMywiaWQiOiJ0Zmp2ZnUwZDQ1OWV3cDciLCJyZWZyZXNoYWJsZSI6dHJ1ZSwidHlwZSI6ImF1dGgifQ.alwAhLBWvuFy9U6gTOetnGESwHjYZiTh7wLO0AAVwCY\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2xsZWN0aW9uSWQiOiJwYmNfMzE0MjYzNTgyMyIsImV4cCI6MTc2NzQ5Njk0OSwiaWQiOiJ0Zmp2ZnUwZDQ1OWV3cDciLCJyZWZyZXNoYWJsZSI6dHJ1ZSwidHlwZSI6ImF1dGgifQ.6bTPP29ZS4yUO1szJaPD29fxAQHvR3Rm6QVM22WkwU4\")",
+      "Bash(docker inspect:*)",
+      "WebSearch",
+      "Bash(timeout 30 docker-compose logs:*)",
+      "Bash(timeout 60 docker-compose logs:*)",
+      "Bash(timeout 120 docker-compose logs:*)",
+      "WebFetch(domain:www.assistant-ui.com)",
+      "Bash(timeout 10 docker-compose logs:*)",
+      "Bash(timeout 5 docker-compose logs:*)"
     ]
   }
 }

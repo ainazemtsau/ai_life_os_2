@@ -1,8 +1,55 @@
+from dataclasses import dataclass
+from datetime import timedelta
 from functools import lru_cache
 from typing import Optional
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+@dataclass(frozen=True)
+class StreamingConfig:
+    """
+    Immutable streaming configuration.
+
+    Centralized settings for LLM streaming behavior.
+    All timeouts and limits are explicitly named for clarity.
+    """
+
+    # Stream lifecycle timeouts
+    stream_start_timeout: timedelta = timedelta(seconds=30)
+    stream_completion_timeout: timedelta = timedelta(minutes=5)
+    activity_schedule_timeout: timedelta = timedelta(seconds=10)
+
+    # Connection lifecycle (React StrictMode handling)
+    disconnect_delay: timedelta = timedelta(seconds=1)
+
+    # Retry policy for transient failures
+    max_retry_attempts: int = 3
+    initial_retry_interval: timedelta = timedelta(seconds=1)
+    retry_backoff_multiplier: float = 2.0
+
+    # Buffer settings for chunk aggregation
+    chunk_buffer_size: int = 10
+
+    @property
+    def disconnect_delay_ms(self) -> int:
+        """Delay in milliseconds for frontend compatibility."""
+        return int(self.disconnect_delay.total_seconds() * 1000)
+
+    @property
+    def stream_start_timeout_seconds(self) -> float:
+        """Timeout in seconds for Temporal activities."""
+        return self.stream_start_timeout.total_seconds()
+
+    @property
+    def stream_completion_timeout_seconds(self) -> float:
+        """Timeout in seconds for stream completion."""
+        return self.stream_completion_timeout.total_seconds()
+
+
+# Singleton streaming config
+streaming_config = StreamingConfig()
 
 
 class Settings(BaseSettings):
@@ -22,13 +69,16 @@ class Settings(BaseSettings):
 
     # Mem0 settings
     mem0_llm_provider: str = "openai"
-    mem0_llm_model: str = "gpt-4o-mini"
+    mem0_llm_model: str = "gpt-5-mini"
     mem0_embedder_provider: str = "openai"
     mem0_embedder_model: str = "text-embedding-3-small"
 
     # Default AI Agent LLM settings (can be overridden per agent)
     llm_provider: str = "openai"  # openai, anthropic, ollama
     llm_model: str = "gpt-5-mini"  # default model for agents
+
+    # Temporal
+    temporal_host: str = "temporal:7233"
 
     # App settings
     log_level: str = "INFO"
@@ -96,9 +146,10 @@ class Settings(BaseSettings):
 
         return config
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+    )
 
 
 @lru_cache

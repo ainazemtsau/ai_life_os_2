@@ -11,6 +11,7 @@ from typing import Any, Optional
 from statemachine import StateMachine, State
 
 from src.services.pocketbase import pocketbase, PocketbaseError
+from src.ai.context import WorkflowContext
 
 logger = logging.getLogger(__name__)
 
@@ -390,6 +391,143 @@ class WorkflowService:
         except PocketbaseError as e:
             logger.error("Failed to complete workflow: %s", e.message)
             return False
+
+    async def get_workflow_context(
+        self,
+        instance_id: str,
+    ) -> Optional[WorkflowContext]:
+        """
+        Build WorkflowContext for agent execution.
+
+        Contains current step info and historical data
+        that agents need to make decisions.
+        """
+        instance = await self.get_instance(instance_id)
+        if not instance:
+            return None
+
+        config = self.get_workflow_config(instance.workflow_name)
+        if not config:
+            return None
+
+        step_info = await self.get_current_step(instance_id)
+        if not step_info:
+            return None
+
+        # Calculate completed steps
+        steps_completed = []
+        for step in config.get("steps", []):
+            if step["name"] == instance.current_step:
+                break
+            steps_completed.append(step["name"])
+
+        return WorkflowContext(
+            workflow_id=instance.workflow_name,
+            instance_id=instance.id,
+            current_step=instance.current_step,
+            step_agent=step_info.get("agent", "coordinator"),
+            is_required=step_info.get("is_required", True),
+            steps_completed=steps_completed,
+            step_data=instance.context.get("step_data", {}),
+            shared=instance.context.get("shared", {}),
+        )
+
+    async def process_agent_signal(
+        self,
+        instance_id: str,
+        signal: "WorkflowSignal",
+        user_id: str,
+    ) -> tuple[bool, Optional[str], Optional["CriteriaResult"]]:
+        """
+        Process a workflow signal from an agent.
+
+        Args:
+            instance_id: The workflow instance ID
+            signal: The WorkflowSignal from the agent
+            user_id: The user ID
+
+        Returns:
+            Tuple of (transitioned, new_step, criteria_result)
+            - transitioned: Whether transition occurred
+            - new_step: Name of new step if transitioned
+            - criteria_result: Result of criteria check if attempted
+        """
+        from src.models.workflow_signal import WorkflowAction
+        from src.services.completion_criteria import (
+            check_completion_criteria,
+            CriteriaResult,
+        )
+
+        # Only process complete_step signals
+        if signal.action != WorkflowAction.COMPLETE_STEP:
+            # Just update context with signal data if any
+            if signal.data:
+                await self.update_context(instance_id, signal.data)
+            return False, None, None
+
+        instance = await self.get_instance(instance_id)
+        if not instance:
+            logger.error("Workflow instance not found: %s", instance_id)
+            return False, None, None
+
+        # Get current step config
+        step_info = await self.get_current_step(instance_id)
+        if not step_info:
+            logger.error("Current step not found for workflow: %s", instance_id)
+            return False, None, None
+
+        # Check completion criteria
+        criteria_config = step_info.get(
+            "completion_criteria",
+            {"type": "agent_signal"},
+        )
+        criteria_result = await check_completion_criteria(
+            criteria_config,
+            instance_id,
+            user_id,
+            signal.data,
+        )
+
+        if not criteria_result.satisfied:
+            logger.info(
+                "Criteria not satisfied for step %s: %s",
+                instance.current_step,
+                criteria_result.missing,
+            )
+            return False, None, criteria_result
+
+        # Transition to next step
+        next_step = step_info.get("next_step")
+        if not next_step:
+            # This is the final step, complete the workflow
+            await self.complete_workflow(instance_id)
+            logger.info("Workflow %s completed", instance_id)
+            return True, None, criteria_result
+
+        # Build context update with step completion data
+        step_data = instance.context.get("step_data", {})
+        step_data[instance.current_step] = {
+            "completed_at": datetime.utcnow().isoformat(),
+            **(criteria_result.data or {}),
+            **(signal.data or {}),
+        }
+
+        context_update = {
+            "step_data": step_data,
+        }
+
+        # Transition to next step
+        success = await self.transition(instance_id, next_step, context_update)
+        if success:
+            logger.info(
+                "Workflow %s transitioned: %s -> %s",
+                instance_id,
+                instance.current_step,
+                next_step,
+            )
+            return True, next_step, criteria_result
+
+        return False, None, criteria_result
 
 
 # Singleton instance

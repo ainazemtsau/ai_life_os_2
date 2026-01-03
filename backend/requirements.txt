@@ -18,8 +18,11 @@ openai>=1.0.0
 pydantic-ai>=0.0.30
 anthropic>=0.40.0
 
-# Workflow state machine
+# Workflow state machine (deprecated, replaced by Temporal)
 python-statemachine>=2.0.0
+
+# Temporal для durable workflow execution
+temporalio>=1.7.0
 
 # Configuration files
 pyyaml>=6.0

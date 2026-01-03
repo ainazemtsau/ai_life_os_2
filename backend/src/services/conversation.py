@@ -1,23 +1,28 @@
 """
 Conversation Service for processing user messages.
 
-Orchestrates the AI agent execution with proper context loading,
-memory management, and WebSocket event handling.
+Orchestrates message handling via Temporal workflows.
+Messages are sent as signals to the workflow, and responses
+are delivered via WebSocket through notify activities.
 """
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
 from fastapi import WebSocket
+from temporalio.client import WorkflowHandle
+from temporalio.service import RPCError
 
-from src.ai.agent import coordinator_agent
-from src.ai.context import AgentContext, AgentDeps
-from src.ai.tools import APP_SYSTEM_COLLECTIONS
 from src.services.pocketbase import pocketbase, PocketbaseError
-from src.services.memory import MemoryService
 from src.services.connection_manager import manager
+from src.temporal.client import get_temporal_client
+from src.temporal.worker import TASK_QUEUE
+from src.temporal.workflows.onboarding import OnboardingWorkflow, UserMessage
 
 logger = logging.getLogger(__name__)
+
+# Default workflow for new users
+DEFAULT_WORKFLOW = "onboarding"
 
 
 @dataclass
@@ -212,9 +217,19 @@ class ConversationService:
         message: str,
         websocket: Optional[WebSocket] = None,
         conversation_id: Optional[str] = None,
+        request_id: Optional[str] = None,
     ) -> ConversationResult:
         """
-        Process a user message and return AI response.
+        Process a user message via Temporal workflow.
+
+        This method:
+        1. Registers the WebSocket connection for the user
+        2. Gets or starts a Temporal workflow
+        3. Sends the message as a signal to the workflow
+        4. Response is delivered via notify activity through WebSocket
+
+        Note: The actual AI response is delivered asynchronously via WebSocket,
+        so this method returns immediately after sending the signal.
 
         Args:
             user_id: User identifier
@@ -223,137 +238,136 @@ class ConversationService:
             conversation_id: Optional existing conversation ID
 
         Returns:
-            ConversationResult with response or error
+            ConversationResult indicating signal was sent
         """
-        conv_id = conversation_id
-        user_msg_id = None
-        assistant_msg_id = None
-
         try:
-            # 1. Send "thinking" event
+            # 1. Register WebSocket for user (for notify activity)
             if websocket:
+                manager.register_user(user_id, websocket)
+                # Send "thinking" event immediately
                 await manager.send_personal(websocket, {"type": "thinking"})
 
-            # 2. Get or create conversation
-            if not conv_id:
-                conversation = await self.get_or_create_conversation(user_id)
-                if conversation:
-                    conv_id = conversation.id
+            # 2. Get Temporal client
+            client = await get_temporal_client()
 
-            # 3. Save user message to DB
-            if conv_id:
-                user_msg = await self.add_message(conv_id, "user", message)
-                if user_msg:
-                    user_msg_id = user_msg.id
+            # 3. Build workflow ID for this user
+            workflow_id = f"onboarding-{user_id}"
 
-            # 4. Load context
-            context = await self._load_context(user_id, message)
+            # 4. Try to get existing workflow or start new one
+            handle: Optional[WorkflowHandle] = None
 
-            # 5. Create agent dependencies
-            deps = AgentDeps(
-                user_id=user_id,
-                websocket=websocket,
-                context=context,
-            )
+            try:
+                # Try to get existing workflow
+                handle = client.get_workflow_handle(workflow_id)
+                # Verify it exists by querying state
+                await handle.query(OnboardingWorkflow.get_state)
+                logger.debug("Found existing workflow for user: %s", user_id)
 
-            # 6. Run the agent
-            logger.info("Running AI agent for user %s", user_id)
-            result = await coordinator_agent.run(message, deps=deps)
-
-            # Get response text from result
-            response = result.output if hasattr(result, 'output') else str(result)
-            logger.info("AI response: %s", response[:100] if len(response) > 100 else response)
-
-            # 7. Save assistant message to DB
-            if conv_id:
-                assistant_msg = await self.add_message(
-                    conv_id,
-                    "assistant",
-                    response,
-                    agent_name="coordinator",
+            except RPCError as e:
+                # Workflow doesn't exist, start new one
+                logger.info("Starting new onboarding workflow for user: %s", user_id)
+                handle = await client.start_workflow(
+                    OnboardingWorkflow.run,
+                    args=[user_id, {}],
+                    id=workflow_id,
+                    task_queue=TASK_QUEUE,
                 )
-                if assistant_msg:
-                    assistant_msg_id = assistant_msg.id
+                logger.info("Started workflow: %s", workflow_id)
 
-            # 8. Save to memory (async, don't wait)
-            await self._save_to_memory(user_id, message, response)
+            except Exception as e:
+                # Other error - try to start anyway
+                logger.warning("Error checking workflow, starting new: %s", e)
+                try:
+                    handle = await client.start_workflow(
+                        OnboardingWorkflow.run,
+                        args=[user_id, {}],
+                        id=workflow_id,
+                        task_queue=TASK_QUEUE,
+                    )
+                except Exception as start_error:
+                    # Workflow might already exist, try to get handle
+                    logger.debug("Workflow may already exist: %s", start_error)
+                    handle = client.get_workflow_handle(workflow_id)
 
+            # 5. Send user message signal to workflow
+            # Wrap in try-catch to handle terminated/completed workflows
+            try:
+                await handle.signal(
+                    OnboardingWorkflow.user_message,
+                    UserMessage(
+                        content=message,
+                        conversation_id=conversation_id,
+                        request_id=request_id,
+                    ),
+                )
+                logger.info(
+                    "Sent message signal to workflow: %s (request_id=%s)",
+                    workflow_id,
+                    request_id,
+                )
+            except RPCError as signal_error:
+                # Workflow might be completed/terminated, start a new one
+                if "already completed" in str(signal_error):
+                    logger.info(
+                        "Workflow %s completed, starting new one",
+                        workflow_id,
+                    )
+                    handle = await client.start_workflow(
+                        OnboardingWorkflow.run,
+                        args=[user_id, {}],
+                        id=workflow_id,
+                        task_queue=TASK_QUEUE,
+                    )
+                    # Signal the new workflow
+                    await handle.signal(
+                        OnboardingWorkflow.user_message,
+                        UserMessage(
+                            content=message,
+                            conversation_id=conversation_id,
+                            request_id=request_id,
+                        ),
+                    )
+                    logger.info(
+                        "Sent message signal to new workflow: %s (request_id=%s)",
+                        workflow_id,
+                        request_id,
+                    )
+                else:
+                    raise
+
+            # Response will be delivered via notify activity through WebSocket
+            # Return success immediately
             return ConversationResult(
-                response=response,
+                response="",  # Response comes via WebSocket
                 success=True,
-                conversation_id=conv_id,
-                message_id=assistant_msg_id,
+                conversation_id=conversation_id,
             )
 
         except Exception as e:
             logger.exception("Error processing message: %s", e)
+
+            # Try to send error via WebSocket
+            if websocket:
+                try:
+                    await manager.send_personal(websocket, {
+                        "type": "error",
+                        "message": f"Failed to process message: {str(e)}",
+                    })
+                except:
+                    pass
+
             return ConversationResult(
                 response="",
                 success=False,
                 error=str(e),
-                conversation_id=conv_id,
+                conversation_id=conversation_id,
             )
 
-    async def _load_context(self, user_id: str, message: str) -> AgentContext:
-        """
-        Load context for the agent.
-
-        Fetches:
-        - Existing collections from Pocketbase
-        - Relevant memories from Mem0
-        """
-        context = AgentContext(user_id=user_id)
-
-        # Load collections
-        try:
-            all_collections = await pocketbase.list_collections()
-            context.collections = [
-                {
-                    "name": col.get("name"),
-                    "fields": col.get("fields", col.get("schema", [])),
-                }
-                for col in all_collections
-                if col.get("name") not in APP_SYSTEM_COLLECTIONS
-                and not col.get("name", "").startswith("_")  # Exclude PB internal collections
-            ]
-            logger.debug("Loaded %d collections", len(context.collections))
-        except PocketbaseError as e:
-            logger.warning("Failed to load collections: %s", e.message)
-
-        # Load memories
-        try:
-            memory_service = MemoryService(user_id=user_id)
-            if memory_service.is_available:
-                memories = await memory_service.search(message, limit=5)
-                context.memories = memories
-                logger.debug("Loaded %d relevant memories", len(memories))
-        except Exception as e:
-            logger.warning("Failed to load memories: %s", e)
-
-        return context
-
-    async def _save_to_memory(
-        self,
-        user_id: str,
-        user_message: str,
-        assistant_response: str,
-    ) -> None:
-        """
-        Save conversation to Mem0 for future context.
-
-        Mem0 will extract important information from the conversation.
-        """
-        try:
-            memory_service = MemoryService(user_id=user_id)
-            if memory_service.is_available:
-                messages = [
-                    {"role": "user", "content": user_message},
-                    {"role": "assistant", "content": assistant_response},
-                ]
-                await memory_service.add(messages)
-                logger.debug("Saved conversation to memory")
-        except Exception as e:
-            logger.warning("Failed to save to memory: %s", e)
+    # Note: Context loading, memory saving, and WebSocket events
+    # are now handled by Temporal activities in the workflow.
+    # - Agent context: handled by run_workflow_agent activity
+    # - Memory: handled by search_memories and add_memory activities
+    # - WebSocket events: handled by notify_user activity
 
 
 # Singleton instance

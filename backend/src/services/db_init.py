@@ -11,6 +11,7 @@ from src.services.pocketbase import pocketbase, PocketbaseError
 logger = logging.getLogger(__name__)
 
 # Collections required by the application
+# Pocketbase v0.20+ field format: for select fields, "values" is at field level
 SYSTEM_COLLECTIONS = {
     "workflow_instances": {
         "name": "workflow_instances",
@@ -23,11 +24,13 @@ SYSTEM_COLLECTIONS = {
                 "name": "status",
                 "type": "select",
                 "required": True,
-                "options": {"values": ["active", "completed", "paused"]},
+                "values": ["active", "completed", "paused"],
             },
             {"name": "context", "type": "json", "required": False},
             {"name": "started_at", "type": "date", "required": False},
             {"name": "completed_at", "type": "date", "required": False},
+            # Temporal integration
+            {"name": "temporal_workflow_id", "type": "text", "required": False},
         ],
         "indexes": ["CREATE INDEX idx_workflow_user ON workflow_instances (user_id)"],
     },
@@ -41,13 +44,13 @@ SYSTEM_COLLECTIONS = {
                 "name": "source",
                 "type": "select",
                 "required": True,
-                "options": {"values": ["chat", "widget", "api"]},
+                "values": ["chat", "widget", "api"],
             },
             {
                 "name": "status",
                 "type": "select",
                 "required": True,
-                "options": {"values": ["new", "processed", "archived"]},
+                "values": ["new", "processed", "archived"],
             },
             {"name": "metadata", "type": "json", "required": False},
         ],
@@ -64,7 +67,7 @@ SYSTEM_COLLECTIONS = {
                 "name": "status",
                 "type": "select",
                 "required": True,
-                "options": {"values": ["active", "completed"]},
+                "values": ["active", "completed"],
             },
         ],
         "indexes": ["CREATE INDEX idx_conv_user ON conversations (user_id)"],
@@ -78,7 +81,7 @@ SYSTEM_COLLECTIONS = {
                 "name": "role",
                 "type": "select",
                 "required": True,
-                "options": {"values": ["user", "assistant", "system"]},
+                "values": ["user", "assistant", "system"],
             },
             {"name": "content", "type": "text", "required": True},
             {"name": "agent_name", "type": "text", "required": False},
@@ -97,7 +100,7 @@ SYSTEM_COLLECTIONS = {
                 "name": "status",
                 "type": "select",
                 "required": True,
-                "options": {"values": ["pending", "active", "completed", "cancelled"]},
+                "values": ["pending", "active", "completed", "cancelled"],
             },
             {"name": "data", "type": "json", "required": False},
             {"name": "completed_at", "type": "date", "required": False},

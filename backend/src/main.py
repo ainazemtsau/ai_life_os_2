@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -16,6 +17,7 @@ from src.services.pocketbase import pocketbase, PocketbaseError
 from src.services.memory import check_memory_service
 from src.services.db_init import init_database
 from src.config_loader import load_all_configs
+from src.temporal.worker import run_worker
 
 # Configure logging
 logging.basicConfig(
@@ -53,12 +55,31 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Mem0: %s (memory features will be disabled)", mem0_msg)
 
+    # Start Temporal worker in background
+    worker_task = None
+    try:
+        logger.info("Starting Temporal worker...")
+        worker_task = asyncio.create_task(run_worker())
+        logger.info("Temporal worker started")
+    except Exception as e:
+        logger.error("Failed to start Temporal worker: %s", e)
+        logger.warning("Continuing without Temporal worker - workflows will not process")
+
     logger.info("Backend started")
 
     yield
 
     # Shutdown
     logger.info("Backend shutting down...")
+
+    # Stop Temporal worker
+    if worker_task:
+        logger.info("Stopping Temporal worker...")
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            logger.info("Temporal worker stopped")
 
 
 app = FastAPI(title="AI Life OS Backend", lifespan=lifespan)

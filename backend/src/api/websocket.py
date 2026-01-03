@@ -103,11 +103,21 @@ async def websocket_chat(websocket: WebSocket):
             # Validate message structure
             msg_type = data.get("type")
 
+            # Debug: log incoming message
+            logger.info("Received message: type=%s, keys=%s", msg_type, list(data.keys()))
+
             # Handle message.send (new) and message (legacy)
             if msg_type in ("message.send", "message"):
                 content = data.get("content", "")
                 user_id = data.get("user_id", str(uuid.uuid4()))
                 conversation_id = data.get("conversation_id")
+                request_id = data.get("request_id")  # For streaming support
+
+                # Debug: log message details
+                logger.info(
+                    "Processing message: user=%s, request_id=%s, content_len=%d",
+                    user_id, request_id, len(content)
+                )
 
                 if not content.strip():
                     await manager.send_personal(websocket, {
@@ -116,31 +126,20 @@ async def websocket_chat(websocket: WebSocket):
                     })
                     continue
 
-                # Process with AI agent
+                # Process with Temporal workflow
+                # If request_id is provided, streaming will be used
+                # Otherwise, legacy notify_user activity delivers the response
                 result = await conversation_service.process_message(
                     user_id=user_id,
                     message=content,
                     websocket=websocket,
                     conversation_id=conversation_id,
+                    request_id=request_id,
                 )
 
-                if result.success:
-                    # Send new format
-                    await send_message_new(
-                        websocket,
-                        content=result.response,
-                        role="assistant",
-                        agent_name="coordinator",
-                        message_id=result.message_id,
-                    )
-                    # Also send legacy format for compatibility
-                    await manager.send_personal(websocket, {
-                        "type": "ai_response",
-                        "content": result.response,
-                        "conversation_id": result.conversation_id,
-                        "message_id": result.message_id,
-                    })
-                else:
+                # Only send error if processing failed
+                # Success responses come via Temporal workflow -> notify activity
+                if not result.success:
                     await manager.send_personal(websocket, {
                         "type": "error",
                         "message": result.error or "Unknown error occurred",

@@ -1,18 +1,54 @@
 services:
+  # Temporal PostgreSQL (отдельная БД для Temporal)
+  temporal-postgresql:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - ./data/temporal-postgres:/var/lib/postgresql/data
+
+  # Temporal Server
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgresql
+    depends_on:
+      - temporal-postgresql
+
+  # Temporal UI для отладки
+  temporal-ui:
+    image: temporalio/ui:2.26.2
+    ports:
+      - "8088:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      - temporal
+
   pocketbase:
     image: ghcr.io/muchobien/pocketbase:latest
     ports:
       - "8090:8090"
     volumes:
-      - pocketbase_data:/pb_data
-    command: serve --http=0.0.0.0:8090
+      - ./data/pocketbase:/pb_data
+    command: serve --http=0.0.0.0:8090 --dir=/pb_data
 
   redis:
     image: redis/redis-stack-server:latest
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
 
   backend:
     build: ./backend
@@ -28,23 +64,24 @@ services:
       - OLLAMA_HOST=${OLLAMA_HOST}
       - OLLAMA_MODEL=${OLLAMA_MODEL}
       - MEM0_LLM_PROVIDER=${MEM0_LLM_PROVIDER:-openai}
-      - MEM0_LLM_MODEL=${MEM0_LLM_MODEL:-gpt-4o-mini}
+      - MEM0_LLM_MODEL=${MEM0_LLM_MODEL:-gpt-5-mini}
       - MEM0_EMBEDDER_PROVIDER=${MEM0_EMBEDDER_PROVIDER:-openai}
       - MEM0_EMBEDDER_MODEL=${MEM0_EMBEDDER_MODEL:-text-embedding-3-small}
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4o}
+      - LLM_MODEL=${LLM_MODEL:-gpt-5-mini}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TEMPORAL_HOST=temporal:7233
     depends_on:
       - pocketbase
       - redis
+      - temporal
 
   frontend:
     build: ./frontend
     ports:
       - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
     depends_on:
       - backend
 
-volumes:
-  redis_data:
-  pocketbase_data:
