@@ -1,0 +1,36 @@
+name: onboarding
+description: Initial user onboarding workflow
+initial_step: greeting
+
+steps:
+  - name: greeting
+    agent: greeter
+    is_required: true
+    completion_criteria:
+      type: agent_decision
+      description: Agent decides user is ready to proceed
+    next_step: discovery
+
+  - name: discovery
+    agent: discovery
+    is_required: true
+    completion_criteria:
+      type: agent_decision
+      description: Agent has gathered enough information about user
+    next_step: brain_dump
+
+  - name: brain_dump
+    agent: inbox_collector
+    is_required: true
+    completion_criteria:
+      type: agent_decision
+      description: User has completed brain dump or opted to skip
+    next_step: setup_complete
+
+  - name: setup_complete
+    agent: coordinator
+    is_required: true
+    completion_criteria:
+      type: auto
+      description: Workflow completed
+    next_step: null

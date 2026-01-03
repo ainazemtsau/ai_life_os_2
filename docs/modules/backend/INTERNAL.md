@@ -5,16 +5,30 @@
 backend/
 ├── Dockerfile
 ├── requirements.txt
+├── agents/                    # Agent YAML configurations
+│   ├── coordinator.yaml
+│   ├── greeter.yaml
+│   ├── discovery.yaml
+│   └── inbox_collector.yaml
+├── workflows/                 # Workflow YAML configurations
+│   └── onboarding.yaml
+├── tests/
+│   └── test_integration.py
 └── src/
     ├── __init__.py
     ├── main.py              # FastAPI app, lifespan, CORS
     ├── config.py            # Settings from environment variables
+    ├── config_loader.py     # Loads agent/workflow configs from YAML
     │
     ├── api/
     │   ├── __init__.py
     │   ├── health.py        # GET /health endpoint
     │   ├── websocket.py     # WS /chat endpoint
-    │   └── test.py          # Test endpoints (temporary)
+    │   ├── test.py          # Test endpoints (temporary)
+    │   ├── user.py          # GET /api/user/profile
+    │   ├── workflow.py      # Workflow API endpoints
+    │   ├── inbox.py         # Inbox API endpoints
+    │   └── conversations.py # Conversations API endpoints
     │
     ├── ai/
     │   ├── __init__.py
@@ -28,7 +42,11 @@ backend/
         ├── pocketbase.py    # Pocketbase REST API client
         ├── connection_manager.py  # WebSocket connection manager
         ├── memory.py        # Mem0 memory service
-        └── conversation.py  # Conversation service (AI orchestration)
+        ├── conversation.py  # Conversation service (AI orchestration)
+        ├── workflow.py      # Workflow state machine service
+        ├── agent.py         # Agent registry service
+        ├── widget.py        # Widget instances service
+        └── db_init.py       # Database initialization
 ```
 
 ## Key Components
@@ -43,43 +61,66 @@ backend/
 - Method: `get_llm_model()` - returns model string for pydantic-ai
 - Singleton: `settings`
 
-### ai/context.py
-- `AgentContext` dataclass - context data for agent
-  - `user_id`, `collections`, `recent_records`, `memories`
-- `AgentDeps` dataclass - dependencies for PydanticAI
-  - `user_id`, `websocket`, `context`
-  - Methods: `get_collections_summary()`, `get_memories_summary()`
+### config_loader.py
+- `load_agent_configs(directory)` - loads all agent YAML configs
+- `load_workflow_configs(directory)` - loads all workflow YAML configs
+- `load_all_configs()` - loads both agents and workflows
+- Called at startup from main.py
 
-### ai/prompts.py
-- `COORDINATOR_SYSTEM_PROMPT` - base system prompt
-- `build_system_prompt(collections, memories)` - builds dynamic prompt
+### services/workflow.py
+- `WorkflowInstance` dataclass - workflow instance data
+- `DynamicWorkflowMachine` - python-statemachine based state machine
+- `WorkflowService` class:
+  - `register_workflow(name, config)` - register workflow config
+  - `start_workflow(user_id, workflow_name)` - create new instance
+  - `get_active_workflow(user_id)` - get user's active workflow
+  - `get_current_step(instance_id)` - get step info
+  - `can_transition(instance_id, to_step)` - check if transition allowed
+  - `transition(instance_id, to_step, data)` - move to next step
+  - `pause_workflow()`, `resume_workflow()`, `complete_workflow()`
+- Singleton: `workflow_service`
 
-### ai/tools.py
-- Tools for AI to interact with Pocketbase:
-  - `list_collections()` - list user collections
-  - `create_collection(name, fields)` - create new collection
-  - `list_records(collection, filter)` - list records
-  - `create_record(collection, data)` - create record
-  - `update_record(collection, record_id, data)` - update record
-  - `delete_record(collection, record_id)` - delete record
-- Sends WebSocket events on data changes
-- `SYSTEM_COLLECTIONS` - set of collections to exclude
+### services/agent.py
+- `AgentConfig` dataclass - agent configuration
+- `AgentResponse` dataclass - standardized response
+- `AgentService` class:
+  - `register_tool(name, func)` - register tool for agents
+  - `register_config(config)` - register agent config
+  - `load_config(path)` - load from YAML file
+  - `get_agent(name)` - get or create PydanticAI agent
+  - `run_agent(agent_name, message, deps)` - execute agent
+- Singleton: `agent_service`
 
-### ai/agent.py
-- `create_agent()` - creates PydanticAI agent with tools
-- `_dynamic_system_prompt()` - builds context-aware system prompt
-- `coordinator_agent` - singleton agent instance
+### services/widget.py
+- `WidgetInstance` dataclass - widget instance data
+- `WidgetService` class:
+  - `create_widget(message_id, widget_type, config)` - create widget
+  - `get_widget(widget_id)` - get widget by ID
+  - `get_pending_widget(conversation_id)` - get pending widget
+  - `activate_widget(widget_id)` - set to active
+  - `complete_widget(widget_id, data)` - complete with data
+  - `cancel_widget(widget_id)` - cancel widget
+- Singleton: `widget_service`
 
-### services/connection_manager.py
-- `ConnectionManager` class for WebSocket connections
-- Methods: `connect()`, `disconnect()`, `send_personal()`, `broadcast()`
-- Singleton: `manager`
+### services/conversation.py
+- `ConversationData` dataclass - conversation data
+- `MessageData` dataclass - message data
+- `ConversationResult` dataclass - processing result
+- `ConversationService` class:
+  - `create_conversation(user_id, agent_name)` - create new
+  - `get_active_conversation(user_id)` - get active
+  - `get_or_create_conversation(user_id)` - get or create
+  - `add_message(conversation_id, role, content)` - add message
+  - `get_history(conversation_id, limit)` - get messages
+  - `complete_conversation(conversation_id)` - mark complete
+  - `process_message(user_id, message, websocket)` - full processing
+- Singleton: `conversation_service`
 
-### services/pocketbase.py
-- `PocketbaseService` class for Pocketbase REST API
-- Methods: `health_check()`, `list_collections()`, `get_collection()`, `create_collection()`, `list_records()`, `get_record()`, `create_record()`, `update_record()`, `delete_record()`
-- `PocketbaseError` exception class
-- Singleton: `pocketbase`
+### services/db_init.py
+- `SYSTEM_COLLECTIONS` - definitions for all system collections
+- `init_database()` - creates collections if not exist
+- `check_database_ready()` - verify all collections exist
+- Collections: workflow_instances, inbox_items, conversations, messages, widget_instances
 
 ### services/memory.py
 - `MemoryService` class for Mem0 long-term memory
@@ -92,33 +133,40 @@ backend/
 - Function: `check_memory_service()` - health check for startup
 - Graceful degradation: if Redis/Mem0 unavailable, returns empty results
 
-### services/conversation.py
-- `ConversationService` class for processing messages
-- Method: `process_message(user_id, message, websocket)`
-  1. Sends "thinking" WS event
-  2. Loads context (collections, memories)
-  3. Runs AI agent
-  4. Saves to Mem0
-  5. Returns response
-- `ConversationResult` dataclass for results
-- Singleton: `conversation_service`
-
 ### api/websocket.py
 - WebSocket endpoint `/chat`
-- Handles message type "message"
-- Sends events: thinking, ai_response, error
-- Tool events sent from tools: collection_created, entity_created, entity_updated, entity_deleted
+- Incoming messages:
+  - `message.send` / `message` - send chat message
+  - `widget.complete` - complete widget with data
+  - `widget.cancel` - cancel widget
+- Outgoing messages:
+  - `thinking` - AI processing
+  - `message.new` - new message
+  - `ai_response` - AI response (legacy)
+  - `workflow.step_changed` - workflow step changed
+  - `widget.show` - show widget
+  - `agent.changed` - active agent changed
+  - `collection_created`, `entity_created`, etc. - data events
 
-### api/test.py
-- Temporary test endpoints for debugging
-- Memory test endpoints
-- `POST /test/ai/chat` - test AI without WebSocket
+### api/user.py
+- `GET /api/user/profile` - get user profile with memories
 
-### main.py
-- FastAPI application with lifespan
-- CORS middleware (localhost:3000)
-- Checks Pocketbase and Mem0 connections on startup
-- Includes health, websocket, and test routers
+### api/workflow.py
+- `GET /api/workflow/current` - get active workflow
+- `POST /api/workflow/start` - start new workflow
+- `POST /api/workflow/{id}/transition` - transition step
+- `GET /api/workflow/list` - list available workflows
+
+### api/inbox.py
+- `GET /api/inbox` - list inbox items
+- `POST /api/inbox` - create inbox item
+- `PATCH /api/inbox/{id}/status` - update status
+- `DELETE /api/inbox/{id}` - delete item
+
+### api/conversations.py
+- `GET /api/conversations/active` - get active conversation
+- `GET /api/conversations/{id}` - get conversation with history
+- `POST /api/conversations/{id}/complete` - mark complete
 
 ## Internal Flow
 
@@ -126,33 +174,31 @@ backend/
 1. Load settings from environment
 2. Configure logging
 3. Check Pocketbase health
-4. Check Mem0/Memory service health
-5. Log "Backend started"
+4. Initialize database collections
+5. Load agent and workflow configurations
+6. Check Mem0/Memory service health
+7. Log "Backend started"
 
 ### WebSocket Message Flow
 1. Client connects → `manager.connect()`
-2. Client sends `{"type": "message", "content": "...", "user_id": "..."}`
-3. Send "thinking" event to client
-4. Load context (collections from Pocketbase, memories from Mem0)
-5. Run AI agent with context
-6. Agent may call tools (create collection, records, etc.)
-7. Tools send events (entity_created, etc.) via WebSocket
-8. Return AI response via "ai_response" event
-9. Save conversation to Mem0
+2. Client sends `{"type": "message.send", "content": "...", "user_id": "..."}`
+3. Get or create conversation
+4. Save user message to DB
+5. Send "thinking" event to client
+6. Load context (collections from Pocketbase, memories from Mem0)
+7. Run AI agent with context
+8. Agent may call tools (create collection, records, etc.)
+9. Save assistant message to DB
+10. Return AI response via "message.new" and "ai_response" events
+11. Save conversation to Mem0
 
-### AI Agent Flow
-1. Receive user message
-2. Build system prompt with current context
-3. LLM processes message and may call tools
-4. Tools execute Pocketbase operations
-5. Tools send WebSocket events on changes
-6. Return text response
-
-### Memory Flow
-1. Create `MemoryService(user_id)`
-2. After conversation: `service.add(messages)` - Mem0 extracts facts
-3. Before response: `service.search(query)` - find relevant memories
-4. Memories added to AI context for personalized responses
+### Workflow Flow
+1. Start workflow via `workflow_service.start_workflow()`
+2. Get current step with `get_current_step()`
+3. Step determines which agent handles messages
+4. Agent processes and can trigger transition
+5. `transition()` moves to next step
+6. Workflow completes when reaching final step
 
 ---
 Update this file when internal structure changes.

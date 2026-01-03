@@ -32,6 +32,10 @@
 | openai | >=1.0.0 | OpenAI API client |
 | pydantic-ai | >=0.0.30 | AI agent framework |
 | anthropic | >=0.40.0 | Anthropic API client |
+| python-statemachine | >=2.0.0 | Workflow state machine |
+| pyyaml | >=6.0 | YAML configuration files |
+| pytest | >=8.0.0 | Testing framework |
+| pytest-asyncio | >=0.23.0 | Async test support |
 
 ## Environment Variables
 

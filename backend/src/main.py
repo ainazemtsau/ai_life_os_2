@@ -7,9 +7,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.health import router as health_router
 from src.api.websocket import router as websocket_router
 from src.api.test import router as test_router
+from src.api.user import router as user_router
+from src.api.workflow import router as workflow_router
+from src.api.inbox import router as inbox_router
+from src.api.conversations import router as conversations_router
 from src.config import settings
 from src.services.pocketbase import pocketbase, PocketbaseError
 from src.services.memory import check_memory_service
+from src.services.db_init import init_database
+from src.config_loader import load_all_configs
 
 # Configure logging
 logging.basicConfig(
@@ -29,8 +35,16 @@ async def lifespan(app: FastAPI):
     try:
         health = await pocketbase.health_check()
         logger.info("Pocketbase connected: %s", health.get("message", "OK"))
+
+        # Initialize database collections
+        created, existing = await init_database()
+        logger.info("Database: %d collections created, %d already existed", created, existing)
     except PocketbaseError as e:
         logger.error("Pocketbase connection failed: %s", e.message)
+
+    # Load agent and workflow configurations
+    agents_count, workflows_count = load_all_configs()
+    logger.info("Loaded %d agents and %d workflows", agents_count, workflows_count)
 
     # Check Mem0/Memory service
     mem0_ok, mem0_msg = await check_memory_service()
@@ -65,3 +79,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(websocket_router)
 app.include_router(test_router)
+app.include_router(user_router)
+app.include_router(workflow_router)
+app.include_router(inbox_router)
+app.include_router(conversations_router)

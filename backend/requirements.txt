@@ -17,3 +17,13 @@ openai>=1.0.0
 # AI Agent
 pydantic-ai>=0.0.30
 anthropic>=0.40.0
+
+# Workflow state machine
+python-statemachine>=2.0.0
+
+# Configuration files
+pyyaml>=6.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

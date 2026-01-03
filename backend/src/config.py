@@ -26,9 +26,9 @@ class Settings(BaseSettings):
     mem0_embedder_provider: str = "openai"
     mem0_embedder_model: str = "text-embedding-3-small"
 
-    # AI Agent LLM settings
+    # Default AI Agent LLM settings (can be overridden per agent)
     llm_provider: str = "openai"  # openai, anthropic, ollama
-    llm_model: str = "gpt-4o"  # gpt-4o, claude-sonnet-4-5, etc.
+    llm_model: str = "gpt-5-mini"  # default model for agents
 
     # App settings
     log_level: str = "INFO"
