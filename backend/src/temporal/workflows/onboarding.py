@@ -35,6 +35,11 @@ with workflow.unsafe.imports_passed_through():
         SaveMessageInput,
         get_user_collections,
         get_or_create_conversation,
+        get_step_configs,
+        check_step_criteria,
+        CheckCriteriaInput,
+        get_workflow_signal,
+        GetSignalInput,
     )
     from src.temporal.activities.pocketbase import complete_workflow
     from src.temporal.workflows.mixins import StreamingMixin, StreamingResult
@@ -54,6 +59,7 @@ class WorkflowState:
     context: dict = field(default_factory=dict)
     steps_completed: list[str] = field(default_factory=list)
     status: str = "active"
+    messages_in_step: int = 0  # Counter for messages in current step
 
 
 @dataclass
@@ -105,6 +111,7 @@ class OnboardingWorkflow(StreamingMixin):
     def __init__(self):
         self.state: Optional[WorkflowState] = None
         self.pending_messages: list[UserMessage] = []
+        self._step_configs: dict[str, dict] = {}  # Loaded from YAML
         self._init_streaming()  # Initialize streaming mixin
 
     @workflow.signal
@@ -134,19 +141,24 @@ class OnboardingWorkflow(StreamingMixin):
 
     @workflow.query
     def get_progress(self) -> dict:
-        """Query workflow progress."""
+        """Query workflow progress with message counts."""
+        total_steps = len(self._step_configs) or len(ONBOARDING_STEPS)
+
         if self.state is None:
-            return {"completed": 0, "total": len(ONBOARDING_STEPS), "percentage": 0}
+            return {"completed": 0, "total": total_steps, "percentage": 0}
 
         completed = len(self.state.steps_completed)
-        total = len(ONBOARDING_STEPS)
+        step_config = self._step_configs.get(self.state.current_step, {})
 
         return {
             "completed": completed,
-            "total": total,
-            "percentage": int((completed / total) * 100) if total > 0 else 0,
+            "total": total_steps,
+            "percentage": int((completed / total_steps) * 100) if total_steps > 0 else 0,
             "current_step": self.state.current_step,
             "steps_completed": self.state.steps_completed,
+            "messages_in_step": self.state.messages_in_step,
+            "min_messages": step_config.get("min_messages", 1),
+            "max_messages": step_config.get("max_messages", 20),
         }
 
     @workflow.run
@@ -162,6 +174,18 @@ class OnboardingWorkflow(StreamingMixin):
             Final workflow state as dict
         """
         workflow.logger.info("Starting onboarding workflow for user: %s", user_id)
+
+        # Load step configurations from YAML
+        self._step_configs = await workflow.execute_activity(
+            get_step_configs,
+            args=["onboarding"],
+            start_to_close_timeout=timedelta(seconds=30),
+        )
+
+        # Fallback to hardcoded if YAML loading fails
+        if not self._step_configs:
+            workflow.logger.warning("Using fallback hardcoded step configs")
+            self._step_configs = ONBOARDING_STEPS
 
         # Initialize state
         self.state = WorkflowState(
@@ -244,10 +268,13 @@ class OnboardingWorkflow(StreamingMixin):
 
     async def _process_message(self, message: UserMessage) -> None:
         """Process a user message."""
-        step_config = ONBOARDING_STEPS.get(self.state.current_step)
+        step_config = self._step_configs.get(self.state.current_step)
         if not step_config:
             workflow.logger.error("Unknown step: %s", self.state.current_step)
             return
+
+        # Increment message counter
+        self.state.messages_in_step += 1
 
         # Save user message
         await workflow.execute_activity(
@@ -282,8 +309,8 @@ class OnboardingWorkflow(StreamingMixin):
             "workflow_id": self.state.workflow_name,
             "instance_id": self.state.instance_id,
             "current_step": self.state.current_step,
-            "step_agent": step_config["agent"],
-            "is_required": step_config["is_required"],
+            "step_agent": step_config.get("agent", "coordinator"),
+            "is_required": step_config.get("is_required", True),
             "steps_completed": self.state.steps_completed,
             "step_data": self.state.context.get("step_data", {}),
             "shared": self.state.context.get("shared", {}),
@@ -318,7 +345,7 @@ class OnboardingWorkflow(StreamingMixin):
                 conversation_id=self.state.conversation_id,
                 role="assistant",
                 content=agent_result.content,
-                agent_name=step_config["agent"],
+                agent_name=step_config.get("agent", "coordinator"),
             ),
             start_to_close_timeout=timedelta(seconds=30),
         )
@@ -363,7 +390,7 @@ class OnboardingWorkflow(StreamingMixin):
                 user_id=self.state.user_id,
                 conversation_id=self.state.conversation_id,
                 workflow_id=workflow.info().workflow_id,
-                agent_name=step_config["agent"],
+                agent_name=step_config.get("agent", "coordinator"),
                 user_message=message.content,
                 workflow_context=workflow_context,
                 collections=collections,
@@ -375,17 +402,32 @@ class OnboardingWorkflow(StreamingMixin):
         # Wait for streaming to complete (via signal)
         streaming_result = await self.wait_for_stream(message.request_id)
 
-        # Convert StreamingResult to AgentResult format
-        workflow_signal = {"action": "stay", "data": {}, "reason": ""}
         if streaming_result.is_error:
             workflow.logger.error(
                 "Streaming failed: %s",
                 streaming_result.error,
             )
+            return AgentResult(
+                content=streaming_result.content or "An error occurred.",
+                workflow_signal={"action": "stay", "data": {}, "reason": "streaming_error"},
+                metadata={},
+            )
+
+        # Determine workflow signal via separate LLM call
+        signal_result = await workflow.execute_activity(
+            get_workflow_signal,
+            GetSignalInput(
+                agent_name=step_config.get("agent", "coordinator"),
+                user_message=message.content,
+                agent_response=streaming_result.content,
+                workflow_context=workflow_context,
+            ),
+            start_to_close_timeout=timedelta(seconds=60),
+        )
 
         return AgentResult(
             content=streaming_result.content,
-            workflow_signal=workflow_signal,
+            workflow_signal=signal_result.signal,
             metadata={},
         )
 
@@ -410,10 +452,11 @@ class OnboardingWorkflow(StreamingMixin):
         )
 
         # Run agent (blocking)
+        agent_name = step_config.get("agent", "coordinator")
         agent_result = await workflow.execute_activity(
             run_workflow_agent,
             AgentInput(
-                agent_name=step_config["agent"],
+                agent_name=agent_name,
                 message=message.content,
                 user_id=self.state.user_id,
                 workflow_context=workflow_context,
@@ -434,7 +477,7 @@ class OnboardingWorkflow(StreamingMixin):
                         "id": str(workflow.uuid4()),
                         "role": "assistant",
                         "content": agent_result.content,
-                        "agent_name": step_config["agent"],
+                        "agent_name": agent_name,
                     },
                 },
             ),
@@ -449,9 +492,10 @@ class OnboardingWorkflow(StreamingMixin):
         data = signal.get("data", {})
 
         workflow.logger.info(
-            "Processing signal: action=%s for step=%s",
+            "Processing signal: action=%s for step=%s (messages: %d)",
             action,
             self.state.current_step,
+            self.state.messages_in_step,
         )
 
         # Store step data
@@ -461,16 +505,109 @@ class OnboardingWorkflow(StreamingMixin):
             self.state.context["step_data"] = step_data
 
         if action == "complete_step":
-            await self._transition_step(step_config)
+            should_complete, reason = await self._should_complete_step(
+                step_config, signal
+            )
+
+            if should_complete:
+                await self._transition_step(step_config)
+            else:
+                # Notify: step transition blocked
+                workflow.logger.info(
+                    "Step transition blocked: %s", reason
+                )
+                await workflow.execute_activity(
+                    notify_user,
+                    NotifyInput(
+                        user_id=self.state.user_id,
+                        event_type="workflow.step_blocked",
+                        payload={
+                            "step": self.state.current_step,
+                            "reason": reason,
+                        },
+                    ),
+                    start_to_close_timeout=timedelta(seconds=10),
+                )
+
         elif action == "need_input":
             # Widget handling would go here
             pass
         # "stay" action - continue on current step (default)
 
+        # Check max_messages for force transition
+        max_messages = step_config.get("max_messages", 20)
+        if self.state.messages_in_step >= max_messages:
+            await self._force_transition(step_config, "max_messages_reached")
+
+    async def _should_complete_step(
+        self,
+        step_config: dict,
+        signal: dict,
+    ) -> tuple[bool, str]:
+        """
+        Check if step should complete based on criteria.
+
+        Returns (should_complete, reason).
+        """
+        # Check min_messages
+        min_messages = step_config.get("min_messages", 1)
+        if self.state.messages_in_step < min_messages:
+            remaining = min_messages - self.state.messages_in_step
+            return False, f"need_{remaining}_more_messages"
+
+        # Check completion criteria via activity
+        criteria_config = step_config.get(
+            "completion_criteria", {"type": "agent_signal"}
+        )
+
+        result = await workflow.execute_activity(
+            check_step_criteria,
+            CheckCriteriaInput(
+                criteria_config=criteria_config,
+                instance_id=self.state.instance_id,
+                user_id=self.state.user_id,
+                signal_data=signal.get("data", {}),
+            ),
+            start_to_close_timeout=timedelta(seconds=30),
+        )
+
+        if not result.satisfied:
+            missing = ", ".join(result.missing) if result.missing else "unknown"
+            return False, f"criteria_not_met: {missing}"
+
+        return True, "all_criteria_met"
+
+    async def _force_transition(self, step_config: dict, reason: str) -> None:
+        """Force transition to next step when max_messages reached."""
+        workflow.logger.info(
+            "Force transition from '%s': %s",
+            self.state.current_step,
+            reason,
+        )
+
+        # Notify user about force transition
+        await workflow.execute_activity(
+            notify_user,
+            NotifyInput(
+                user_id=self.state.user_id,
+                event_type="workflow.step_force_complete",
+                payload={
+                    "step": self.state.current_step,
+                    "reason": reason,
+                    "message": "Переходим к следующему этапу.",
+                },
+            ),
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+
+        # Transition to next step
+        await self._transition_step(step_config)
+
     async def _transition_step(self, step_config: dict) -> None:
         """Handle step transition."""
         old_step = self.state.current_step
-        next_step = step_config.get("next")
+        # Support both "next_step" (YAML) and "next" (fallback)
+        next_step = step_config.get("next_step") or step_config.get("next")
 
         if next_step is None:
             # Workflow complete
@@ -482,6 +619,7 @@ class OnboardingWorkflow(StreamingMixin):
         # Transition to next step
         self.state.steps_completed.append(old_step)
         self.state.current_step = next_step
+        self.state.messages_in_step = 0  # Reset message counter
 
         # Update DB
         await workflow.execute_activity(
@@ -495,7 +633,7 @@ class OnboardingWorkflow(StreamingMixin):
         )
 
         # Get new step config
-        new_step_config = ONBOARDING_STEPS.get(next_step, {})
+        new_step_config = self._step_configs.get(next_step, {})
 
         # Notify: step changed
         await workflow.execute_activity(

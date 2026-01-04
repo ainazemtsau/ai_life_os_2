@@ -20,6 +20,17 @@ from src.temporal.activities.pocketbase import (
     SaveMessageInput,
 )
 from src.temporal.activities.streaming import start_streaming, StartStreamingInput
+from src.temporal.activities.config import get_step_configs
+from src.temporal.activities.criteria import (
+    check_step_criteria,
+    CheckCriteriaInput,
+    CheckCriteriaResult,
+)
+from src.temporal.activities.signal import (
+    get_workflow_signal,
+    GetSignalInput,
+    SignalResult,
+)
 
 __all__ = [
     # Agent
@@ -47,4 +58,14 @@ __all__ = [
     "CreateWorkflowInput",
     "UpdateStepInput",
     "SaveMessageInput",
+    # Config
+    "get_step_configs",
+    # Criteria
+    "check_step_criteria",
+    "CheckCriteriaInput",
+    "CheckCriteriaResult",
+    # Signal
+    "get_workflow_signal",
+    "GetSignalInput",
+    "SignalResult",
 ]

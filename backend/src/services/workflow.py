@@ -108,6 +108,33 @@ class WorkflowService:
         """List all registered workflow names."""
         return list(cls._workflow_configs.keys())
 
+    @classmethod
+    def get_step_configs(cls, workflow_name: str) -> dict[str, dict]:
+        """
+        Get step configurations for a workflow as dict.
+
+        Returns dict mapping step name to step config dict.
+        Used by Temporal workflow activities.
+        """
+        config = cls._workflow_configs.get(workflow_name)
+        if not config:
+            return {}
+
+        result = {}
+        for step in config.get("steps", []):
+            result[step["name"]] = {
+                "name": step["name"],
+                "agent": step.get("agent", "coordinator"),
+                "next_step": step.get("next_step"),
+                "is_required": step.get("is_required", True),
+                "min_messages": step.get("min_messages", 1),
+                "max_messages": step.get("max_messages", 20),
+                "completion_criteria": step.get(
+                    "completion_criteria", {"type": "agent_signal"}
+                ),
+            }
+        return result
+
     async def start_workflow(
         self,
         user_id: str,

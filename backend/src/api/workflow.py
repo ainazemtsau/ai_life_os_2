@@ -80,6 +80,10 @@ class WorkflowProgressResponse(BaseModel):
     progress_percent: int
     steps_completed: list[str]
     status: str
+    # Message count fields
+    messages_in_step: int = 0
+    min_messages: int = 1
+    max_messages: int = 20
 
 
 @router.get("/current", response_model=CurrentWorkflowResponse)
@@ -212,7 +216,8 @@ async def get_workflow_progress(user_id: str) -> WorkflowProgressResponse:
     """
     Get workflow progress information from Temporal.
 
-    Returns current step, completed steps, and progress percentage.
+    Returns current step, completed steps, progress percentage,
+    and message counts for the current step.
     """
     try:
         client = await get_temporal_client()
@@ -230,6 +235,9 @@ async def get_workflow_progress(user_id: str) -> WorkflowProgressResponse:
             progress_percent=progress.get("percentage", 0),
             steps_completed=progress.get("steps_completed", []),
             status="active" if progress.get("percentage", 0) < 100 else "completed",
+            messages_in_step=progress.get("messages_in_step", 0),
+            min_messages=progress.get("min_messages", 1),
+            max_messages=progress.get("max_messages", 20),
         )
 
     except RPCError:

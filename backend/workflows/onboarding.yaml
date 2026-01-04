@@ -6,6 +6,8 @@ steps:
   - name: greeting
     agent: greeter
     is_required: true
+    min_messages: 2
+    max_messages: 10
     completion_criteria:
       type: agent_signal
       description: Agent signals user is ready to proceed
@@ -14,6 +16,8 @@ steps:
   - name: discovery
     agent: discovery
     is_required: true
+    min_messages: 5
+    max_messages: 30
     completion_criteria:
       type: agent_signal_memory
       description: Agent signals AND minimum facts collected about priorities
@@ -25,6 +29,8 @@ steps:
   - name: brain_dump
     agent: inbox_collector
     is_required: true
+    min_messages: 3
+    max_messages: 20
     completion_criteria:
       type: agent_signal_widget
       description: Agent signals AND inbox has items
@@ -36,6 +42,8 @@ steps:
   - name: setup_complete
     agent: coordinator
     is_required: true
+    min_messages: 1
+    max_messages: 1
     completion_criteria:
       type: auto
       description: Workflow completed automatically

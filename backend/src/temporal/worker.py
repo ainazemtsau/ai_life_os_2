@@ -21,6 +21,9 @@ from src.temporal.activities.pocketbase import (
     get_user_collections,
     get_or_create_conversation,
 )
+from src.temporal.activities.config import get_step_configs
+from src.temporal.activities.criteria import check_step_criteria
+from src.temporal.activities.signal import get_workflow_signal
 from src.temporal.workflows.onboarding import OnboardingWorkflow
 
 logger = logging.getLogger(__name__)
@@ -67,6 +70,12 @@ async def run_worker() -> None:
             save_message,
             get_user_collections,
             get_or_create_conversation,
+            # Config
+            get_step_configs,
+            # Criteria
+            check_step_criteria,
+            # Signal
+            get_workflow_signal,
         ],
     )
 
