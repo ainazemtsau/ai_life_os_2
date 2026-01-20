@@ -44,7 +44,25 @@
       "WebFetch(domain:www.assistant-ui.com)",
       "Bash(timeout 10 docker-compose logs:*)",
       "Bash(timeout 5 docker-compose logs:*)",
-      "Bash(python -m json.tool:*)"
+      "Bash(python -m json.tool:*)",
+      "Bash(pip show:*)",
+      "Bash(chmod:*)",
+      "Bash(python -m src.poc.test_toolsets:*)",
+      "Bash(find:*)",
+      "Bash(python -m src.poc.test_pydantic_graph:*)",
+      "Bash(python -m src.poc.test_integration:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(ANTHROPIC_API_KEY=\"test-key\" python:*)",
+      "Bash(ANTHROPIC_API_KEY=\"test-key\" pytest:*)",
+      "Bash(ANTHROPIC_API_KEY=\"test-key\" bash:*)",
+      "WebFetch(domain:bundlephobia.com)",
+      "Bash(grep:*)",
+      "WebFetch(domain:ai.pydantic.dev)",
+      "Bash(docker logs:*)",
+      "Bash(python3:*)",
+      "Bash(timeout 20 docker-compose logs:*)",
+      "Bash(tree:*)",
+      "Bash(wc:*)"
     ]
   }
 }
