@@ -1,0 +1,35 @@
+{
+  "name": "@ai-life-os/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run --reporter=json --outputFile=test-results.json",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@ai-life-os/supabase": "workspace:*",
+    "@ai-life-os/ai": "workspace:*",
+    "@ai-life-os/ui": "workspace:*",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.6.0"
+  },
+  "devDependencies": {
+    "@ai-life-os/typescript-config": "workspace:*",
+    "@ai-life-os/eslint-config": "workspace:*",
+    "@types/react": "^19.0.9",
+    "vitest": "^3.0.5",
+    "typescript": "^5.7.2",
+    "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
+    "postcss": "^8.4.49",
+    "autoprefixer": "^10.4.20"
+  }
+}

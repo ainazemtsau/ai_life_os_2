@@ -1,0 +1,30 @@
+{
+  "name": "ai-life-os",
+  "private": true,
+  "scripts": {
+    "start": "docker compose up",
+    "start:build": "docker compose up --build",
+    "stop": "docker compose down",
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "type-check": "turbo type-check",
+    "ai:verify": "turbo run ai:verify",
+    "logs": "docker compose logs -f",
+    "logs:web": "docker compose logs -f web",
+    "web:restart": "docker compose restart web",
+    "web:rebuild": "docker compose up -d --build web",
+    "db:start": "docker compose up -d db kong auth rest meta studio inbucket",
+    "db:stop": "docker compose stop db kong auth rest meta studio inbucket",
+    "zod:generate": "echo 'Run zod-gen skill in Claude Code'"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.15.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@ai-life-os/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --reporter=json --outputFile=test-results.json",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@ai-life-os/typescript-config": "workspace:*",
+    "vitest": "^3.0.5",
+    "fast-check": "^3.23.2",
+    "typescript": "^5.7.2"
+  }
+}
