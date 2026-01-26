@@ -23,5 +23,25 @@ export const ChatSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
+// parent_id enables simpler recursive queries for tree traversal.
+// Null parentId indicates root message (system prompts, conversation starters).
+export const MessageSchema = z.object({
+  id: z.string().uuid(),
+  conversationId: z.string().uuid(),
+  parentId: z.string().uuid().nullable(),
+  role: z.enum(['user', 'assistant', 'system']),
+  content: z.string(),
+  status: z.enum(['pending', 'streaming', 'complete', 'error', 'stopped']),
+  createdAt: z.string().datetime(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+export const ConversationSchema = ChatSchema.extend({
+  assistantId: z.string().uuid(),
+});
+
+export type Message = z.infer<typeof MessageSchema>;
+export type Conversation = z.infer<typeof ConversationSchema>;
+
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type Chat = z.infer<typeof ChatSchema>;

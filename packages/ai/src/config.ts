@@ -2,14 +2,24 @@ import { Mastra } from '@mastra/core';
 import { openai } from '@ai-sdk/openai';
 
 export const models = {
-  'gpt-4o': openai('gpt-4o'),
-  'gpt-4o-mini': openai('gpt-4o-mini'),
+  'gpt-5-mini': openai('gpt-5-mini'),
 } as const;
 
 export type ModelId = keyof typeof models;
 
-export function getModel(modelId: ModelId) {
-  return models[modelId];
+export function getModel(modelId: string) {
+  if (!(modelId in models)) {
+    throw new Error(`Invalid model: ${modelId}`);
+  }
+  return models[modelId as ModelId];
+}
+
+export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  'gpt-5-mini': 128000,
+};
+
+export function getContextWindow(modelId: string): number {
+  return MODEL_CONTEXT_WINDOWS[modelId] ?? 128000;
 }
 
 export const mastra = new Mastra({

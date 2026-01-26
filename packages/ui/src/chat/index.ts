@@ -1,8 +1,10 @@
+'use client';
+
 export {
   Thread,
   ThreadWelcome,
   Composer,
-  ComposerInput,
-  ComposerSend,
   AssistantMessage,
+  AssistantRuntimeProvider,
+  useLocalRuntime,
 } from '@assistant-ui/react';

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { TopNavbar } from '@ai-life-os/ui';
 
 export const metadata: Metadata = {
   title: 'AI Life OS',
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body>{children}</body>
+      <body className="flex h-screen flex-col overflow-hidden">
+        <TopNavbar />
+        <main className="flex-1 overflow-hidden">{children}</main>
+      </body>
     </html>
   );
 }

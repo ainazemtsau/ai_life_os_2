@@ -37,3 +37,28 @@ Supabase CLI generates TypeScript types from the database schema (`pnpm db:gener
 3. **Environment variables must be set at startup**: `SUPABASE_URL` and `SUPABASE_ANON_KEY` are required. Missing vars throw immediately in `createClient()` (fail-fast strategy).
 4. **Tests must run against real Supabase instance**: In-memory mocks do not test RLS policies or triggers. Use Docker Compose to spin up local Supabase for tests.
 5. **Session refresh errors must not break page load**: If `updateSession()` fails (network error, invalid token), the middleware returns the original response. Do not block requests on refresh failures.
+
+## Usage Metrics
+
+### Architecture
+
+`usage_metrics` table tracks LLM token consumption for cost analytics. Separate from messages table to enable independent retention policies and clean aggregation queries without joining message content.
+
+### Design Decisions
+
+**Separate table over message metadata**: Message metadata mixes content concerns with analytics. Separate table enables SQL aggregations (SUM tokens by conversation/model), independent retention, and dashboard queries without exposing message content.
+
+**CASCADE DELETE on conversation**: When conversation deleted (privacy compliance), usage metrics also deleted. Sacrifices historical cost analytics for GDPR-style data minimization. Alternative: anonymize conversation_id instead of CASCADE to preserve cost data.
+
+**Nullable message_id**: Allows tracking usage without binding to specific message. Future: track tool calls, agent reasoning, or other LLM usage not tied to user-facing messages.
+
+**Three token counts**: Store `input_tokens`, `output_tokens`, and `total_tokens` as-is. `total_tokens` may exceed sum when reasoning tokens present (Claude Opus extended thinking). All three stored for accurate billing data. Aggregation uses `total_tokens` for actual cost.
+
+**Indexes for aggregation**: Index on `(conversation_id, created_at DESC)` enables fast dashboard queries (total cost per conversation, trend over time). Partial index on `message_id` (WHERE NOT NULL) reduces index size.
+
+### Usage Metrics Invariants
+
+1. **CHECK constraints enforce non-negative tokens**: All token counts must be >= 0. Database rejects negative values.
+2. **totalTokens >= inputTokens + outputTokens is valid**: Reasoning tokens can cause totalTokens to exceed sum. No constraint enforcing equality.
+3. **created_at defaults to now()**: Timestamp automatically set on INSERT for chronological analytics.
+4. **Metrics deleted with conversation**: CASCADE DELETE enforced by foreign key. No orphan metrics allowed.

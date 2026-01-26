@@ -2,6 +2,61 @@
 
 AI-powered chat assistants with memory, tools, and workflows.
 
+## ОБЯЗАТЕЛЬНАЯ ПРОВЕРКА ПЕРЕД "ГОТОВО"
+
+**НИКОГДА не говори что задача выполнена пока не пройдут ВСЕ проверки:**
+
+```bash
+# 1. Type check
+pnpm type-check
+
+# 2. Lint
+pnpm lint
+
+# 3. Build (ловит runtime ошибки экспортов)
+pnpm build
+
+# 4. Tests
+pnpm test
+
+# 5. BROWSER CHECK - использовать Playwright MCP
+# Открыть страницу в браузере и проверить консоль на ошибки
+```
+
+**Playwright MCP команды:**
+- `browser_navigate` - открыть URL
+- `browser_console_messages` - получить ошибки консоли
+- `browser_screenshot` - сделать скриншот
+
+**Если dev сервер не запущен** - запустить `pnpm dev --filter web` и подождать.
+
+**Если есть ошибки в консоли браузера** - исправить и проверить заново.
+
+**Типичные ошибки которые НЕ ловит type-check/build:**
+- Неправильные реэкспорты (export X from Y где X не существует)
+- Отсутствие 'use client' в Next.js App Router
+- Compound components (`Composer.Input` vs `ComposerInput`)
+- Runtime ошибки React (`createContext is not a function`)
+
+## Запуск окружения для проверки
+
+**ВСЁ запускается через Docker Compose одной командой:**
+
+```bash
+pnpm start
+```
+
+**Проверка что окружение работает:**
+- Web App: http://localhost:3000
+- Supabase Dashboard: http://localhost:54323
+
+**Другие команды:**
+- `pnpm stop` - остановить
+- `pnpm logs` - все логи
+- `pnpm logs:web` - логи web app
+
+**Только после `pnpm start` делать browser_navigate и browser_console_messages!**
+
 ## Files
 
 | File          | What                                           | When to read                                      |

@@ -14,6 +14,7 @@ COPY pnpm-lock.yam[l] ./
 # Copy only package.json files from each package (not source code)
 COPY apps/web/package.json ./apps/web/
 COPY packages/ai/package.json ./packages/ai/
+COPY packages/contracts/package.json ./packages/contracts/
 COPY packages/supabase/package.json ./packages/supabase/
 COPY packages/ui/package.json ./packages/ui/
 COPY tooling/typescript/package.json ./tooling/typescript/

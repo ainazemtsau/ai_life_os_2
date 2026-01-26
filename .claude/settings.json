@@ -1,5 +1,19 @@
 {
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true
+  },
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ]
+    }
+  },
+  "permissions": {
+    "allow": [
+      "mcp__playwright__browser_navigate"
+    ]
   }
 }

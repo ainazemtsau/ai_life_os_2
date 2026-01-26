@@ -8,8 +8,11 @@ export const AssistantSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   systemPrompt: z.string().optional(),
-  model: z.string().default('gpt-4'),
+  provider: z.enum(['openai']).default('openai'),
+  model: z.string().default('gpt-5-mini'),
   temperature: z.number().min(0).max(2).default(0.7),
+  maxTokens: z.number().int().positive().optional(),
+  status: z.enum(['active', 'inactive']).default('active'),
   // z.string().datetime() validates strict ISO 8601 format for API string serialization
   createdAt: z.string().datetime(),
   // z.string().datetime() validates strict ISO 8601 format for API string serialization

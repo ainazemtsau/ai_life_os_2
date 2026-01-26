@@ -15,6 +15,8 @@ assistant-ui chat components and shadcn/ui primitives.
 
 ## Subdirectories
 
-| Directory     | What                          | When to read                              |
-| ------------- | ----------------------------- | ----------------------------------------- |
-| `src/chat/`   | assistant-ui chat components  | Building chat UI, message rendering       |
+| Directory        | What                                         | When to read                                      |
+| ---------------- | -------------------------------------------- | ------------------------------------------------- |
+| `src/chat/`      | assistant-ui chat components                 | Building chat UI, message rendering               |
+| `src/runtime/`   | External store runtime adapter for assistant-ui | Integrating runtime state, streaming, thread management |
+| `src/components/sidebar/` | Thread list and navigation components | Implementing sidebar, thread list UI              |

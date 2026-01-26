@@ -2,7 +2,7 @@
 """
 Plan Executor - Execute approved plans through delegation.
 
-Nine-step workflow:
+Ten-step workflow:
   1. Execution Planning - analyze plan, build wave list
   2. Reconciliation - validate existing code (conditional)
   3. Implementation - dispatch developers (wave-aware parallel)
@@ -11,7 +11,8 @@ Nine-step workflow:
   6. Documentation - TW pass
   7. Doc QR - verify documentation quality
   8. Doc QR Gate - route pass/fail
-  9. Retrospective - present summary
+  9. Functional Verification - MANDATORY runtime/browser testing
+  10. Retrospective - present summary (only after step 9 passes)
 """
 
 import argparse
@@ -145,6 +146,71 @@ STEPS = {
     },
     # Step 8 is the Doc QR gate - handled separately
     9: {
+        "title": "Functional Verification",
+        "actions": [
+            "<mandatory_verification>",
+            "THIS STEP IS BLOCKING. Task is NOT complete until ALL checks pass.",
+            "If ANY check fails, you MUST fix it before proceeding.",
+            "If you CANNOT fix (e.g., Docker not running), you MUST:",
+            "  1. Report the blocker explicitly to user",
+            "  2. State 'TASK NOT COMPLETE - blocked by [reason]'",
+            "  3. Do NOT proceed to retrospective",
+            "</mandatory_verification>",
+            "",
+            "VERIFICATION CHECKLIST (execute in order):",
+            "",
+            "1. TYPE CHECK:",
+            "   Run: pnpm type-check",
+            "   Pass criteria: Exit code 0, no errors",
+            "",
+            "2. LINT:",
+            "   Run: pnpm lint",
+            "   Pass criteria: Exit code 0, no errors",
+            "",
+            "3. BUILD:",
+            "   Run: pnpm build",
+            "   Pass criteria: Exit code 0, builds successfully",
+            "",
+            "4. TESTS:",
+            "   Run: pnpm test",
+            "   Pass criteria: All tests pass",
+            "",
+            "5. RUNTIME VERIFICATION (if applicable):",
+            "   - Start dev server or Docker environment",
+            "   - Navigate to affected pages using Playwright MCP",
+            "   - Check browser console for errors (browser_console_messages)",
+            "   - Test core functionality manually",
+            "   - Take screenshots as evidence",
+            "",
+            "6. API VERIFICATION (if API routes modified):",
+            "   - Test each modified endpoint with curl or fetch",
+            "   - Verify response format matches schema",
+            "   - Check error handling (invalid input, missing auth, etc.)",
+            "",
+            "<failure_handling>",
+            "If ANY verification fails:",
+            "  1. Document the failure clearly",
+            "  2. Fix the issue (dispatch developer if needed)",
+            "  3. Re-run ALL verifications from step 1",
+            "  4. Do NOT proceed until ALL pass",
+            "",
+            "If verification is BLOCKED (e.g., Docker won't start):",
+            "  1. Use AskUserQuestion to inform user",
+            "  2. State explicitly: 'Cannot complete verification because [reason]'",
+            "  3. Do NOT mark task as complete",
+            "  4. Do NOT proceed to retrospective",
+            "</failure_handling>",
+            "",
+            "<evidence_required>",
+            "Before proceeding to retrospective, you MUST have:",
+            "  - Screenshot of working UI (if frontend changes)",
+            "  - Output showing all tests pass",
+            "  - Output showing type-check/lint/build pass",
+            "  - Browser console showing no errors",
+            "</evidence_required>",
+        ],
+    },
+    10: {
         "title": "Retrospective",
         "actions": [
             "PRESENT retrospective to user (do not write to file):",
@@ -159,6 +225,7 @@ STEPS = {
             "Plan Accuracy Issues: [if any]",
             "Deviations from Plan: [if any]",
             "Quality Review Summary: [counts by category]",
+            "Functional Verification: [PASSED with evidence | BLOCKED by reason]",
             "Feedback for Future Plans: [actionable suggestions]",
         ],
     },
@@ -180,7 +247,7 @@ DOC_QR_GATE = GateConfig(
     qr_name="Doc QR",
     work_step=6,
     pass_step=9,
-    pass_message="Documentation verified. Proceed to retrospective.",
+    pass_message="Documentation verified. Proceed to functional verification.",
     self_fix=False,
     fix_target=AgentRole.TECHNICAL_WRITER,
 )
@@ -1222,7 +1289,7 @@ def format_output(step: int, total_steps: int,
 def main():
     parser = argparse.ArgumentParser(
         description="Plan Executor - Execute approved plans",
-        epilog="Steps: plan -> reconcile -> implement -> code QR -> gate -> docs -> doc QR -> gate -> retrospective",
+        epilog="Steps: plan -> reconcile -> implement -> code QR -> gate -> docs -> doc QR -> gate -> functional verify -> retrospective",
     )
 
     parser.add_argument("--step", type=int, required=True)
@@ -1233,8 +1300,8 @@ def main():
 
     args = parser.parse_args()
 
-    if args.step < 1 or args.step > 9:
-        sys.exit("Error: step must be 1-9")
+    if args.step < 1 or args.step > 10:
+        sys.exit("Error: step must be 1-10")
 
     if args.step == 5 and not args.qr_status:
         sys.exit("Error: --qr-status required for step 5")

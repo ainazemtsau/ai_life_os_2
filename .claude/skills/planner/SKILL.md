@@ -16,7 +16,7 @@ script IS the workflow.
 | Mode      | Intent                             | Command                                                                                                             |
 | --------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | planning  | "plan", "design", "architect"      | `<invoke working-dir=".claude/skills/scripts" cmd="python3 -m skills.planner.planner --step 1 --total-steps 13" />` |
-| execution | "execute", "implement", "run plan" | `<invoke working-dir=".claude/skills/scripts" cmd="python3 -m skills.planner.executor --step 1 --total-steps 9" />` |
+| execution | "execute", "implement", "run plan" | `<invoke working-dir=".claude/skills/scripts" cmd="python3 -m skills.planner.executor --step 1 --total-steps 10" />` |
 
 ## When to Use
 
@@ -62,7 +62,7 @@ Skip when task is:
 12. QR-Docs - validate comment hygiene
 13. Gate - PLAN APPROVED
 
-## Execution Workflow (9 steps)
+## Execution Workflow (10 steps)
 
 1. Execution planning - wave analysis
 2. Reconciliation (conditional) - validate existing code
@@ -72,6 +72,14 @@ Skip when task is:
 6. Documentation - create CLAUDE.md/README.md
 7. Doc QR - verify documentation quality
 8. Doc QR Gate - route to step 6 on fail
-9. Retrospective - summary presentation
+9. **Functional Verification** - MANDATORY runtime/browser testing (BLOCKING)
+10. Retrospective - summary presentation (only after step 9 passes)
+
+**Step 9 is BLOCKING**: Task cannot be marked complete until:
+- All static checks pass (type-check, lint, build, test)
+- Runtime verification passes (browser console errors, API responses)
+- Evidence collected (screenshots, test output)
+
+If verification fails or is blocked, must report explicitly to user.
 
 Scripts inject step-specific guidance. Invoke and follow output.
