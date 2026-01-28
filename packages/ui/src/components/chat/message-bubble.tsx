@@ -1,41 +1,79 @@
+'use client';
+
 import * as React from 'react';
+import type { Message } from '@ai-life-os/contracts';
 import { MarkdownRenderer } from './markdown-renderer';
 import { MessageActions } from './message-actions';
+import { BranchNavigator } from './branch-navigator';
+import { MessageEditForm } from './message-edit-form';
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant' | 'system';
   content: string;
   messageId?: string;
-  onEdit?: (messageId: string) => void;
-  onRegenerate?: (messageId: string) => void;
+  siblings?: Message[];
+  onEdit?: (messageId: string, newContent: string) => void;
+  onNavigate?: (targetMessageId: string) => void;
 }
 
-export function MessageBubble({ role, content, messageId, onEdit, onRegenerate }: MessageBubbleProps) {
+export function MessageBubble({ role, content, messageId, siblings, onEdit, onNavigate }: MessageBubbleProps) {
   const isUser = role === 'user';
+  const [isEditing, setIsEditing] = React.useState(false);
+
+  const handleEditClick = () => {
+    setIsEditing(true);
+  };
+
+  const handleSave = (newContent: string) => {
+    setIsEditing(false);
+    if (messageId && onEdit) {
+      onEdit(messageId, newContent);
+    }
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+  };
 
   return (
     <div
       className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}
     >
       <div
-        className={`max-w-[80%] rounded-lg px-4 py-3 ${
+        className={`group max-w-[80%] rounded-lg px-4 py-3 ${
           isUser
             ? 'bg-zinc-700 text-white'
             : 'bg-gray-700 text-gray-100'
         }`}
       >
-        {isUser ? (
-          <p className="whitespace-pre-wrap">{content}</p>
+        {isEditing ? (
+          <MessageEditForm
+            initialContent={content}
+            onSave={handleSave}
+            onCancel={handleCancel}
+          />
         ) : (
-          <MarkdownRenderer content={content} />
+          <>
+            {isUser ? (
+              <p className="whitespace-pre-wrap">{content}</p>
+            ) : (
+              <MarkdownRenderer content={content} />
+            )}
+            <MessageActions
+              role={role}
+              content={content}
+              messageId={messageId}
+              onEdit={handleEditClick}
+            />
+            {siblings && messageId && onNavigate && (
+              <BranchNavigator
+                siblings={siblings}
+                currentMessageId={messageId}
+                onNavigate={onNavigate}
+              />
+            )}
+          </>
         )}
-        <MessageActions
-          role={role}
-          content={content}
-          messageId={messageId}
-          onEdit={onEdit}
-          onRegenerate={onRegenerate}
-        />
       </div>
     </div>
   );

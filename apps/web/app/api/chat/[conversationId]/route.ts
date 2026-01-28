@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerClient } from '@ai-life-os/supabase';
 import { chatWorkflow } from '@ai-life-os/ai';
-import { createTextStream } from '@/lib/stream-utils';
+import { createSSEStream } from '@/lib/stream-utils';
 
 const SendMessageSchema = z.object({
   content: z.string().min(1),
@@ -39,8 +39,12 @@ export async function POST(
       abortSignal: request.signal,
     });
 
-    return new Response(createTextStream(stream), {
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    return new Response(createSSEStream(stream), {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

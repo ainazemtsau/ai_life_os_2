@@ -1,59 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { getUserConversations, createConversation } from '@ai-life-os/supabase';
+import type { Conversation } from '@ai-life-os/contracts';
 import {
-  createServerClient,
-  getUserConversations,
-  createConversation,
-} from '@ai-life-os/supabase';
+  createGetHandler,
+  createApiHandler,
+  requireParam,
+} from '@/lib/api/route-handler';
 
 const CreateThreadSchema = z.object({
   userId: z.string().uuid(),
   assistantId: z.string().uuid(),
 });
 
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'userId required' },
-        { status: 400 }
-      );
-    }
-
-    const client = await createServerClient();
+export const GET = createGetHandler<{ conversations: Conversation[] }>({
+  handler: async ({ client, searchParams }) => {
+    const userId = requireParam(searchParams, 'userId');
     const conversations = await getUserConversations(client, userId);
+    return { conversations };
+  },
+});
 
-    return NextResponse.json({ conversations });
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { userId, assistantId } = CreateThreadSchema.parse(body);
-
-    const client = await createServerClient();
+export const POST = createApiHandler({
+  schema: CreateThreadSchema,
+  handler: async ({ input, client }) => {
     const conversation = await createConversation(client, {
-      userId,
-      assistantId,
+      userId: input.userId,
+      assistantId: input.assistantId,
     });
-
-    return NextResponse.json({ conversation });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors }, { status: 400 });
-    }
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
+    return { conversation };
+  },
+});

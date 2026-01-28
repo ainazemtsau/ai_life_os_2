@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Single source of truth for chat message structure across packages
 export const ChatMessageSchema = z.object({
   id: z.string().uuid(),
-  chatId: z.string().uuid(),
+  conversationId: z.string().uuid(),
   role: z.enum(['user', 'assistant', 'system']),
   content: z.string(),
   // z.string().datetime() validates strict ISO 8601 format for API string serialization

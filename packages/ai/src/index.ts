@@ -8,3 +8,5 @@ export { regenerateWorkflow } from './workflows/regenerate.workflow';
 export { truncateContext } from './utils/context-truncation';
 export { withRetry } from './utils/retry';
 export { createTokenTracker, createErrorLogger } from './utils/observability';
+export * from './utilities';
+export * from './operations/messages';

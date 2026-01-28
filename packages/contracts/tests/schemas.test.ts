@@ -10,8 +10,8 @@ describe('ChatMessageSchema', () => {
       fc.constantFrom('user', 'assistant', 'system'),
       fc.string(),
       fc.date().map(d => d.toISOString()),
-      (id, chatId, role, content, createdAt) => {
-        const result = ChatMessageSchema.safeParse({ id, chatId, role, content, createdAt });
+      (id, conversationId, role, content, createdAt) => {
+        const result = ChatMessageSchema.safeParse({ id, conversationId, role, content, createdAt });
         expect(result.success).toBe(true);
       }
     ));
@@ -20,7 +20,7 @@ describe('ChatMessageSchema', () => {
   it('rejects invalid role', () => {
     const invalid = {
       id: '123e4567-e89b-12d3-a456-426614174000',
-      chatId: '123e4567-e89b-12d3-a456-426614174001',
+      conversationId: '123e4567-e89b-12d3-a456-426614174001',
       role: 'invalid',
       content: 'test',
       createdAt: new Date().toISOString()
@@ -32,7 +32,7 @@ describe('ChatMessageSchema', () => {
   it('rejects invalid UUID format', () => {
     const invalid = {
       id: 'not-a-uuid',
-      chatId: '123e4567-e89b-12d3-a456-426614174001',
+      conversationId: '123e4567-e89b-12d3-a456-426614174001',
       role: 'user',
       content: 'test',
       createdAt: new Date().toISOString()
@@ -44,7 +44,7 @@ describe('ChatMessageSchema', () => {
   it('rejects invalid datetime format', () => {
     const invalid = {
       id: '123e4567-e89b-12d3-a456-426614174000',
-      chatId: '123e4567-e89b-12d3-a456-426614174001',
+      conversationId: '123e4567-e89b-12d3-a456-426614174001',
       role: 'user',
       content: 'test',
       createdAt: 'not-a-datetime'
@@ -61,8 +61,8 @@ describe('ChatMessageSchema', () => {
       fc.string(),
       fc.date().map(d => d.toISOString()),
       fc.dictionary(fc.string(), fc.anything()),
-      (id, chatId, role, content, createdAt, metadata) => {
-        const result = ChatMessageSchema.safeParse({ id, chatId, role, content, createdAt, metadata });
+      (id, conversationId, role, content, createdAt, metadata) => {
+        const result = ChatMessageSchema.safeParse({ id, conversationId, role, content, createdAt, metadata });
         expect(result.success).toBe(true);
       }
     ));

@@ -26,6 +26,7 @@ CREATE TABLE conversations (
   user_id UUID NOT NULL,
   assistant_id UUID NOT NULL REFERENCES assistants(id) ON DELETE CASCADE,
   title TEXT,
+  title_edited_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   metadata JSONB
@@ -34,6 +35,7 @@ CREATE TABLE conversations (
 CREATE INDEX conversations_user_id_idx ON conversations(user_id);
 CREATE INDEX conversations_assistant_id_idx ON conversations(assistant_id);
 CREATE INDEX conversations_updated_at_idx ON conversations(updated_at DESC);
+CREATE INDEX conversations_title_edited_at_idx ON conversations(title_edited_at);
 
 -- Messages: tree structure with parent_id
 CREATE TABLE messages (

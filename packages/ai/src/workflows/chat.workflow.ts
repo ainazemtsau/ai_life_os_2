@@ -11,6 +11,7 @@ import type { Database } from '@ai-life-os/supabase';
 import { truncateContext } from '../utils/context-truncation';
 import { withRetry } from '../utils/retry';
 import { createTokenTracker, createErrorLogger } from '../utils/observability';
+import type { SSEEvent } from '@ai-life-os/contracts';
 
 export interface ChatWorkflowInput {
   client: SupabaseClient<Database>;
@@ -21,7 +22,7 @@ export interface ChatWorkflowInput {
   skipUserMessage?: boolean;
 }
 
-export async function* chatWorkflow(input: ChatWorkflowInput) {
+export async function* chatWorkflow(input: ChatWorkflowInput): AsyncGenerator<SSEEvent> {
   const { client, conversationId, content, abortSignal, parentMessageId, skipUserMessage } = input;
 
   const { data: conversation, error: convError } = await client
@@ -65,6 +66,13 @@ export async function* chatWorkflow(input: ChatWorkflowInput) {
     role: 'assistant',
     status: 'pending',
   });
+
+  // Emit metadata event with message IDs for client-side optimistic updates
+  yield {
+    type: 'meta',
+    userMessageId,
+    assistantMessageId: assistantMessage.id,
+  };
 
   try {
     const messages = await getConversationMessages(client, conversationId);
@@ -110,12 +118,15 @@ export async function* chatWorkflow(input: ChatWorkflowInput) {
     let lastSaveTime = Date.now();
     for await (const chunk of result.textStream) {
       fullContent += chunk;
-      yield chunk;
+      yield { type: 'chunk', content: chunk };
       if (Date.now() - lastSaveTime > 500) {
         await updateMessage(client, assistantMessage.id, { content: fullContent });
         lastSaveTime = Date.now();
       }
     }
+
+    // Emit complete event with full content
+    yield { type: 'complete', content: fullContent };
 
     await updateMessage(client, assistantMessage.id, {
       content: fullContent,

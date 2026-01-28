@@ -17,7 +17,10 @@
     "web:rebuild": "docker compose up -d --build web",
     "db:start": "docker compose up -d db kong auth rest meta studio inbucket",
     "db:stop": "docker compose stop db kong auth rest meta studio inbucket",
-    "zod:generate": "echo 'Run zod-gen skill in Claude Code'"
+    "zod:generate": "echo 'Run zod-gen skill in Claude Code'",
+    "test:db:start": "docker compose -f docker-compose.test.yml up -d",
+    "test:db:stop": "docker compose -f docker-compose.test.yml down -v",
+    "test:integration": "docker compose -f docker-compose.test.yml up -d && turbo test --filter=web && docker compose -f docker-compose.test.yml down -v"
   },
   "devDependencies": {
     "turbo": "^2.3.3"

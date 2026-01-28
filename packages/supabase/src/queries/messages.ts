@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types';
 import type { Message } from '@ai-life-os/contracts';
+import { transformMetadata } from '../utils/row-transformer';
 
 type DbMessage = Database['public']['Tables']['messages']['Row'];
 type DbMessageInsert = Database['public']['Tables']['messages']['Insert'];
@@ -15,7 +16,7 @@ function toMessage(row: DbMessage): Message {
     content: row.content,
     status: row.status as Message['status'],
     createdAt: row.created_at,
-    metadata: row.metadata as Record<string, unknown> | undefined,
+    metadata: transformMetadata(row.metadata),
   };
 }
 

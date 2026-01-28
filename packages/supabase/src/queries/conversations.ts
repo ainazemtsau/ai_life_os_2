@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types';
 import type { Conversation } from '@ai-life-os/contracts';
+import { nullToUndefined, transformMetadata } from '../utils/row-transformer';
 
 type DbConversation = Database['public']['Tables']['conversations']['Row'];
 type DbConversationInsert = Database['public']['Tables']['conversations']['Insert'];
@@ -11,10 +12,10 @@ function toConversation(row: DbConversation): Conversation {
     id: row.id,
     userId: row.user_id,
     assistantId: row.assistant_id,
-    title: row.title ?? undefined,
+    title: nullToUndefined(row.title),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    metadata: row.metadata as Record<string, unknown> | undefined,
+    metadata: transformMetadata(row.metadata),
   };
 }
 
@@ -88,5 +89,40 @@ export async function deleteConversation(
   id: string
 ): Promise<void> {
   const { error } = await client.from('conversations').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function updateConversationTitle(
+  client: SupabaseClient<Database>,
+  id: string,
+  title: string
+): Promise<boolean> {
+  // Atomic update: only update if title_edited_at IS NULL (no race condition)
+  const { data, error } = await client
+    .from('conversations')
+    .update({
+      title,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .is('title_edited_at', null)
+    .select('id')
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+
+  // PGRST116 = no rows returned (title was manually edited)
+  return data !== null;
+}
+
+export async function setTitleManuallyEdited(
+  client: SupabaseClient<Database>,
+  id: string
+): Promise<void> {
+  const { error } = await client
+    .from('conversations')
+    .update({ title_edited_at: new Date().toISOString() })
+    .eq('id', id);
+
   if (error) throw error;
 }

@@ -37,12 +37,14 @@ ChatPanel
 
 ### Edit Message (Branch)
 1. User hovers over user message, clicks Edit in MessageActions
-2. MessageBubble becomes editable textarea
-3. User saves edited content
-4. Parent component POSTs to /api/chat/branch
-5. New message created with same parent_id (sibling)
-6. BranchNavigator appears showing "< 1/2 >"
-7. User can navigate between branches with arrows
+2. MessageBubble toggles to edit mode showing MessageEditForm
+3. User modifies content in textarea, clicks Save (or Cmd/Ctrl+Enter)
+4. chat-runtime.ts editMessage() calls POST /api/messages/[id]/edit
+5. API streams new assistant response via branchWorkflow
+6. New assistant message created as sibling with same parent_id
+7. BranchNavigator appears showing "< 1/2 >" if siblings exist
+8. Runtime updates activeBranches[parentId] to new message ID
+9. User can navigate between versions with arrow buttons
 
 ### Regenerate
 1. User clicks Regenerate in MessageActions (last assistant message only)
@@ -58,14 +60,19 @@ ChatPanel
 
 ## Invariants
 
-1. **Branch isolation**: Switching branches loads complete path from root to leaf (no mixed branches)
-2. **Auto-scroll pause**: User scrolling up >100px disables auto-scroll during generation
-3. **Keyboard shortcuts**: Enter sends (unless Shift held), Escape stops generation or cancels edit
-4. **Role distinction**: User messages plain text (preserved newlines), assistant messages as markdown
-5. **Edit restriction**: Only user messages have Edit button (assistant messages have Regenerate)
+1. **Branch isolation**: Only one sibling per parent_id visible at a time, determined by activeBranches map
+2. **Sibling immutability**: Edit operations create new siblings, never mutate existing messages
+3. **activeBranches reset**: Cleared on thread switch to prevent stale branch references
+4. **Auto-scroll pause**: User scrolling up >100px disables auto-scroll during generation
+5. **Keyboard shortcuts**: Enter sends (unless Shift held), Escape stops generation or cancels edit
+6. **Role distinction**: User messages plain text (preserved newlines), assistant messages as markdown
+7. **Edit restriction**: Only user messages have Edit button (assistant messages have Regenerate)
+8. **Edit disabled during streaming**: Edit button disabled while isGenerating to prevent race conditions
 
 ## Tradeoffs
 
+- **Local activeBranches vs database**: Active branch selection stored in runtime state, not database. Simpler implementation but state lost on page refresh. Can be restored via localStorage later.
+- **Lazy siblings fetch vs eager**: Siblings loaded on first navigation click, not at message mount. Reduces initial API calls with acceptable first-click latency. siblingsCache eliminates latency for subsequent navigations.
 - **Duplication over abstraction**: Runtime adapter duplicates some workflow logic for optimistic updates (simpler than shared abstraction layer)
 - **Markdown for all assistant messages**: No plain text mode (trades flexibility for consistent rendering)
 - **Manual QA only**: No automated tests for UI components (visual verification during development, test effort focused on workflows)
@@ -79,8 +86,11 @@ ChatPanel
 
 ### Message Tree Navigation
 - parent_id-based tree structure in Supabase
-- Runtime tracks current branch via leafMessageId
-- BranchNavigator queries siblings (same parent_id), switches by updating leafMessageId
+- Runtime tracks active branch per parent via activeBranches map (parentId -> messageId)
+- BranchNavigator queries siblings (same parent_id) via GET /api/messages/[id]/siblings
+- Navigation switches by updating activeBranches[parentId], triggering message filtering
+- Messages filtered: show only siblings where activeBranches matches message ID
+- Default active branch: last created sibling (highest created_at timestamp)
 
 ### Streaming State
 - Runtime receives chunks from API ReadableStream
@@ -94,6 +104,7 @@ ChatPanel
 | Enter | Send message (unless Shift held) |
 | Shift+Enter | Insert newline |
 | Escape | Stop generation or cancel edit |
+| Cmd/Ctrl+Enter | Save edited message (in edit mode) |
 | Ctrl/Cmd+Shift+O | New conversation |
 | Ctrl/Cmd+/ | Focus input |
 

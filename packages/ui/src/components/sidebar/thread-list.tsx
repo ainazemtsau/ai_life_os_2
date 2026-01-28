@@ -33,11 +33,11 @@ export function ThreadList({ defaultAssistantId }: ThreadListProps) {
   const handleNewChat = React.useCallback(async () => {
     try {
       const assistantId = defaultAssistantId || DEFAULT_ASSISTANT_ID;
-      const conversation = await runtime.createThread(assistantId);
+      const conversation = await runtime.createConversation(assistantId);
       mutate();
       router.push(`/chat/${conversation.id}`);
     } catch (error) {
-      console.error('Failed to create thread:', error);
+      console.error('Failed to create conversation:', error);
     }
   }, [runtime, router, mutate, defaultAssistantId]);
 

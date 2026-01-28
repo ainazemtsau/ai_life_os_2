@@ -1,17 +1,62 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import type { Conversation } from '@ai-life-os/contracts';
+import { validateTitle } from '@ai-life-os/contracts';
 import { generateTitle } from '../../utils/title-generator';
 
 interface ThreadItemProps {
   conversation: Conversation;
   isActive: boolean;
   onDelete: () => void;
+  onTitleUpdate?: (newTitle: string) => void;
 }
 
-export function ThreadItem({ conversation, isActive, onDelete }: ThreadItemProps) {
+export function ThreadItem({ conversation, isActive, onDelete, onTitleUpdate }: ThreadItemProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
   const title = conversation.title || generateTitle('');
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setEditValue(title);
+    setIsEditing(true);
+  };
+
+  const handleSave = async () => {
+    const validation = validateTitle(editValue);
+    if (!validation.valid) {
+      alert(validation.error);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/threads/${conversation.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editValue.trim() }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update title');
+
+      setIsEditing(false);
+      onTitleUpdate?.(editValue.trim());
+    } catch (error) {
+      console.error('Failed to update title:', error);
+      alert('Failed to update title');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsEditing(false);
+    }
+  };
 
   return (
     <div
@@ -19,12 +64,25 @@ export function ThreadItem({ conversation, isActive, onDelete }: ThreadItemProps
         isActive ? 'bg-accent' : ''
       }`}
     >
-      <Link
-        href={`/chat/${conversation.id}`}
-        className="flex-1 truncate text-foreground"
-      >
-        {title}
-      </Link>
+      {isEditing ? (
+        <input
+          type="text"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={handleSave}
+          className="flex-1 rounded border border-border bg-background px-2 py-1 text-foreground"
+          autoFocus
+        />
+      ) : (
+        <Link
+          href={`/chat/${conversation.id}`}
+          className="flex-1 truncate text-foreground"
+          onDoubleClick={handleDoubleClick}
+        >
+          {title}
+        </Link>
+      )}
       <button
         onClick={(e) => {
           e.preventDefault();

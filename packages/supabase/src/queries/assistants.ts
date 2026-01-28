@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../types';
 import type { Assistant } from '@ai-life-os/contracts';
+import { nullToUndefined, transformMetadata } from '../utils/row-transformer';
 
 type DbAssistant = Database['public']['Tables']['assistants']['Row'];
 type DbAssistantInsert = Database['public']['Tables']['assistants']['Insert'];
@@ -11,16 +12,16 @@ function toAssistant(row: DbAssistant): Assistant {
     id: row.id,
     userId: row.user_id,
     name: row.name,
-    description: row.description ?? undefined,
-    systemPrompt: row.system_prompt ?? undefined,
+    description: nullToUndefined(row.description),
+    systemPrompt: nullToUndefined(row.system_prompt),
     provider: row.provider as 'openai',
     model: row.model,
     temperature: Number(row.temperature),
-    maxTokens: row.max_tokens ?? undefined,
+    maxTokens: nullToUndefined(row.max_tokens),
     status: row.status as 'active' | 'inactive',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    metadata: row.metadata as Record<string, unknown> | undefined,
+    metadata: transformMetadata(row.metadata),
   };
 }
 

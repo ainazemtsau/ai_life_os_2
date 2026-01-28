@@ -7,12 +7,12 @@ import { ChatPanel } from '@ai-life-os/ui';
 export default function ChatPage() {
   const router = useRouter();
 
-  const handleThreadCreated = useCallback(
+  const handleConversationCreated = useCallback(
     (id: string) => {
       router.push(`/chat/${id}`);
     },
     [router]
   );
 
-  return <ChatPanel onThreadCreated={handleThreadCreated} />;
+  return <ChatPanel onConversationCreated={handleConversationCreated} />;
 }

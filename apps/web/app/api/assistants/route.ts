@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import {
-  createServerClient,
-  getUserAssistants,
-  createAssistant,
-} from '@ai-life-os/supabase';
+import { getUserAssistants, createAssistant } from '@ai-life-os/supabase';
 import { AssistantSchema } from '@ai-life-os/contracts';
+import type { Assistant } from '@ai-life-os/contracts';
+import {
+  createGetHandler,
+  createApiHandler,
+  requireParam,
+} from '@/lib/api/route-handler';
 
 const CreateAssistantSchema = AssistantSchema.omit({
   id: true,
@@ -14,46 +14,18 @@ const CreateAssistantSchema = AssistantSchema.omit({
   metadata: true,
 });
 
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'userId required' },
-        { status: 400 }
-      );
-    }
-
-    const client = await createServerClient();
+export const GET = createGetHandler<{ assistants: Assistant[] }>({
+  handler: async ({ client, searchParams }) => {
+    const userId = requireParam(searchParams, 'userId');
     const assistants = await getUserAssistants(client, userId);
+    return { assistants };
+  },
+});
 
-    return NextResponse.json({ assistants });
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const data = CreateAssistantSchema.parse(body);
-
-    const client = await createServerClient();
-    const assistant = await createAssistant(client, data);
-
-    return NextResponse.json({ assistant });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors }, { status: 400 });
-    }
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
+export const POST = createApiHandler({
+  schema: CreateAssistantSchema,
+  handler: async ({ input, client }) => {
+    const assistant = await createAssistant(client, input);
+    return { assistant };
+  },
+});

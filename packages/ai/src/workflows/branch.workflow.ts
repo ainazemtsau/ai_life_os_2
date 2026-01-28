@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@ai-life-os/supabase';
+import type { SSEEvent } from '@ai-life-os/contracts';
 import { chatWorkflow } from './chat.workflow';
 
 export interface BranchWorkflowInput {
@@ -9,7 +10,7 @@ export interface BranchWorkflowInput {
   abortSignal?: AbortSignal;
 }
 
-export async function* branchWorkflow(input: BranchWorkflowInput) {
+export async function* branchWorkflow(input: BranchWorkflowInput): AsyncGenerator<SSEEvent> {
   const { client, originalMessageId, newContent, abortSignal } = input;
 
   const { data: original, error: fetchError } = await client

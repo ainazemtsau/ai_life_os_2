@@ -1,84 +1,43 @@
 'use client';
 
 import * as React from 'react';
-import {
-  AssistantRuntimeProvider,
-  Thread,
-  useExternalStoreRuntime,
-  type ThreadMessageLike,
-} from '@assistant-ui/react';
-import { useChatRuntime, type ChatRuntimeState } from '../../runtime';
+import { useChatRuntime } from '../../runtime';
+import { MessageList } from './message-list';
+import { MessageInput } from './message-input';
 
 interface ChatPanelProps {
   conversationId?: string;
-  onThreadCreated?: (id: string) => void;
+  onConversationCreated?: (id: string) => void;
 }
 
-// Convert our Message format to assistant-ui ThreadMessageLike
-function convertMessage(msg: ChatRuntimeState['messages'][number]): ThreadMessageLike {
-  return {
-    id: msg.id,
-    role: msg.role as 'user' | 'assistant',
-    content: msg.content,
-    createdAt: new Date(msg.createdAt),
-  };
-}
+export function ChatPanel({ conversationId, onConversationCreated }: ChatPanelProps) {
+  const { conversationId: activeConversationId, switchConversation, sendMessage, isGenerating, error } = useChatRuntime();
+  const onConversationCreatedRef = React.useRef(onConversationCreated);
+  onConversationCreatedRef.current = onConversationCreated;
 
-export function ChatPanel({ conversationId, onThreadCreated }: ChatPanelProps) {
-  console.log('[ChatPanel] render, conversationId:', conversationId);
-  const chatRuntime = useChatRuntime();
-  const onThreadCreatedRef = React.useRef(onThreadCreated);
-  onThreadCreatedRef.current = onThreadCreated;
-
-  // Load thread when conversationId changes
+  // Load conversation when conversationId changes
   React.useEffect(() => {
-    if (conversationId && conversationId !== chatRuntime.threadId) {
-      chatRuntime.switchThread(conversationId);
+    if (conversationId && conversationId !== activeConversationId) {
+      switchConversation(conversationId);
     }
-  }, [conversationId, chatRuntime]);
+  }, [conversationId, activeConversationId, switchConversation]);
 
-  const onNew = React.useCallback(
-    async (message: { content: Array<{ type: string; text?: string }> }) => {
-      const textContent = message.content
-        .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
-        .map((c) => c.text)
-        .join('');
-
-      if (textContent) {
-        await chatRuntime.sendMessage(textContent, onThreadCreatedRef.current);
-      }
+  const handleSendMessage = React.useCallback(
+    async (content: string) => {
+      await sendMessage(content, onConversationCreatedRef.current);
     },
-    [chatRuntime]
+    [sendMessage]
   );
 
-  const onCancel = React.useCallback(async () => {
-    chatRuntime.abort();
-  }, [chatRuntime]);
-
-  // Debug: log messages
-  React.useEffect(() => {
-    console.log('[ChatPanel] messages:', chatRuntime.messages.length, chatRuntime.messages);
-  }, [chatRuntime.messages]);
-
-  // Create external store adapter for assistant-ui
-  const runtime = useExternalStoreRuntime({
-    messages: chatRuntime.messages,
-    isRunning: chatRuntime.isGenerating,
-    convertMessage,
-    onNew,
-    onCancel,
-  });
-
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <div className="flex h-full flex-col">
-        <Thread />
-        {chatRuntime.error && (
-          <div className="bg-red-900/50 p-2 text-center text-red-200">
-            {chatRuntime.error}
-          </div>
-        )}
-      </div>
-    </AssistantRuntimeProvider>
+    <div className="flex h-full flex-col">
+      <MessageList conversationId={conversationId} />
+      <MessageInput onSend={handleSendMessage} disabled={isGenerating} />
+      {error && (
+        <div className="bg-red-900/50 p-2 text-center text-red-200">
+          {error.message}
+        </div>
+      )}
+    </div>
   );
 }

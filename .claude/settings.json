@@ -1,4 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "mcp__playwright__browser_navigate"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Anton\\AppData\\Local\\Temp\\qr-report-final"
+    ]
+  },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true
   },
@@ -10,10 +18,5 @@
         "@playwright/mcp@latest"
       ]
     }
-  },
-  "permissions": {
-    "allow": [
-      "mcp__playwright__browser_navigate"
-    ]
   }
 }

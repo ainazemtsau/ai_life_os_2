@@ -23,3 +23,4 @@ Next.js API route handlers for chat, threads, and assistants.
 | `chat/` | Chat message endpoints | Implementing chat functionality |
 | `threads/` | Conversation management | Implementing sidebar, thread list |
 | `assistants/` | Assistant CRUD | Implementing admin panel |
+| `messages/` | Message operations (edit, siblings) | Implementing message editing, branch navigation |

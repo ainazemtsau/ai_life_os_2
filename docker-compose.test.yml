@@ -1,0 +1,58 @@
+# AI Life OS - Test Environment
+# ISOLATED from dev environment - different ports, separate volume
+#
+# Start: docker compose -f docker-compose.test.yml up -d
+# Stop: docker compose -f docker-compose.test.yml down -v
+# Run tests: pnpm test:integration
+
+services:
+  test-db:
+    image: supabase/postgres:15.6.1.143
+    container_name: supabase-test-db
+    ports:
+      - "55322:5432"  # Different from dev (54322)
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - supabase-test-db-data:/var/lib/postgresql/data
+      - ./supabase/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  test-kong:
+    image: kong:2.8.1
+    container_name: supabase-test-kong
+    ports:
+      - "55321:8000"  # Different from dev (54321)
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+    volumes:
+      - ./supabase/kong.yml:/var/lib/kong/kong.yml:ro
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+  test-rest:
+    image: postgrest/postgrest:v12.2.3
+    container_name: supabase-test-rest
+    environment:
+      PGRST_DB_URI: postgres://authenticator:postgres@test-db:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+volumes:
+  supabase-test-db-data:

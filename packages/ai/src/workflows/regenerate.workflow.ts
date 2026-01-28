@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@ai-life-os/supabase';
+import type { SSEEvent } from '@ai-life-os/contracts';
 import { chatWorkflow } from './chat.workflow';
 
 export interface RegenerateWorkflowInput {
@@ -8,7 +9,7 @@ export interface RegenerateWorkflowInput {
   abortSignal?: AbortSignal;
 }
 
-export async function* regenerateWorkflow(input: RegenerateWorkflowInput) {
+export async function* regenerateWorkflow(input: RegenerateWorkflowInput): AsyncGenerator<SSEEvent> {
   const { client, assistantMessageId, abortSignal } = input;
 
   const { data: assistantMsg, error: fetchError } = await client

@@ -1,49 +1,65 @@
 'use client';
 
 import * as React from 'react';
-import { Composer } from '@assistant-ui/react';
 import { Button } from '../../button';
 
 interface MessageInputProps {
-  conversationId?: string;
+  onSend: (content: string) => void | Promise<void>;
+  disabled?: boolean;
 }
 
-export function MessageInput({ conversationId }: MessageInputProps) {
-  const [isGenerating, setIsGenerating] = React.useState(false);
-  const abortControllerRef = React.useRef<AbortController | null>(null);
+export function MessageInput({ onSend, disabled }: MessageInputProps) {
+  const [input, setInput] = React.useState('');
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
-  const handleStop = React.useCallback(() => {
-    abortControllerRef.current?.abort();
-    setIsGenerating(false);
-  }, []);
+  const handleSubmit = React.useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!input.trim() || disabled) return;
+
+      const content = input;
+      setInput('');
+      await onSend(content);
+    },
+    [input, disabled, onSend]
+  );
+
+  const handleKeyDown = React.useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit(e);
+      }
+    },
+    [handleSubmit]
+  );
 
   return (
     <div className="border-t border-gray-700 bg-gray-900 p-4">
-      <Composer>
+      <form onSubmit={handleSubmit}>
         <div className="mx-auto flex max-w-4xl items-end gap-2">
           <div className="flex-1">
-            <Composer.Input
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Type a message..."
+              disabled={disabled}
               className="min-h-[60px] w-full resize-none rounded-lg border border-gray-600 bg-gray-800 px-4 py-3 text-white placeholder-gray-400 focus:border-zinc-500 focus:outline-none disabled:opacity-50"
             />
           </div>
 
-          {isGenerating ? (
-            <Button
-              type="button"
-              onClick={handleStop}
-              className="rounded-lg bg-red-600 px-4 py-3 text-white hover:bg-red-700"
-            >
-              Stop
-            </Button>
-          ) : (
-            <Composer.Send className="rounded-lg bg-zinc-700 px-4 py-3 text-white hover:bg-zinc-600 disabled:opacity-50">
-              Send
-            </Composer.Send>
-          )}
+          <Button
+            type="submit"
+            disabled={disabled || !input.trim()}
+            className="rounded-lg bg-zinc-700 px-4 py-3 text-white hover:bg-zinc-600 disabled:opacity-50"
+          >
+            Send
+          </Button>
         </div>
 
-        {isGenerating && (
+        {disabled && (
           <div className="mx-auto mt-2 max-w-4xl text-sm text-gray-400">
             <span className="inline-flex items-center gap-2">
               <span className="animate-pulse">●</span>
@@ -51,7 +67,7 @@ export function MessageInput({ conversationId }: MessageInputProps) {
             </span>
           </div>
         )}
-      </Composer>
+      </form>
     </div>
   );
 }

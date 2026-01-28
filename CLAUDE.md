@@ -19,28 +19,18 @@ pnpm build
 # 4. Tests
 pnpm test
 
-# 5. BROWSER CHECK - использовать Playwright MCP
-# Открыть страницу в браузере и проверить консоль на ошибки
+# 5. Integration tests - проверить что тесты покрывают взаимодействия
+# pnpm test запускает все тесты включая integration
 ```
 
-**Playwright MCP команды:**
-- `browser_navigate` - открыть URL
-- `browser_console_messages` - получить ошибки консоли
-- `browser_screenshot` - сделать скриншот
+**Требования к тестам:**
+- Integration тесты ДОЛЖНЫ покрывать: API routes + Database, межпакетные взаимодействия
+- Unit тесты: property-based (fast-check) для сложной логики
+- Если тесты не покрывают взаимодействия - добавить до завершения задачи
 
-**Если dev сервер не запущен** - запустить `pnpm dev --filter web` и подождать.
+## Запуск окружения
 
-**Если есть ошибки в консоли браузера** - исправить и проверить заново.
-
-**Типичные ошибки которые НЕ ловит type-check/build:**
-- Неправильные реэкспорты (export X from Y где X не существует)
-- Отсутствие 'use client' в Next.js App Router
-- Compound components (`Composer.Input` vs `ComposerInput`)
-- Runtime ошибки React (`createContext is not a function`)
-
-## Запуск окружения для проверки
-
-**ВСЁ запускается через Docker Compose одной командой:**
+**Docker Compose:**
 
 ```bash
 pnpm start
@@ -54,8 +44,6 @@ pnpm start
 - `pnpm stop` - остановить
 - `pnpm logs` - все логи
 - `pnpm logs:web` - логи web app
-
-**Только после `pnpm start` делать browser_navigate и browser_console_messages!**
 
 ## Files
 
